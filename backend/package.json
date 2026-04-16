@@ -1,0 +1,38 @@
+{
+  "name": "stundenplan-backend",
+  "version": "0.1.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "tsx watch src/index.ts",
+    "docker:dev": "prisma db push && npm run seed && npm run dev",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
+    "seed": "node prisma/seed.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "private": true,
+  "dependencies": {
+    "@prisma/client": "^6.18.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "ics": "^3.11.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.5.0",
+    "prisma": "^6.18.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2"
+  }
+}
