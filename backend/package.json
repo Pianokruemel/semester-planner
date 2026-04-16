@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node -e \"console.log('No automated backend tests configured yet.')\"",
+    "lint": "tsc --noEmit -p tsconfig.json",
     "dev": "tsx watch src/index.ts",
     "docker:dev": "prisma db push && npm run seed && npm run dev",
     "build": "tsc -p tsconfig.json",
@@ -16,7 +17,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "type": "commonjs",
   "private": true,
   "dependencies": {

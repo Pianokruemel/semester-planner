@@ -2,11 +2,11 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: stundenplan
-      POSTGRES_USER: app
-      POSTGRES_PASSWORD: appsecret
+      POSTGRES_DB: ${POSTGRES_DB:-stundenplan}
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-appsecret}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U app -d stundenplan"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app} -d ${POSTGRES_DB:-stundenplan}"]
       interval: 3s
       timeout: 3s
       retries: 20
@@ -18,7 +18,7 @@ services:
   backend:
     build: ./backend
     environment:
-      DATABASE_URL: postgres://app:appsecret@db:5432/stundenplan
+      DATABASE_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-appsecret}@db:5432/${POSTGRES_DB:-stundenplan}
       PORT: 4000
     ports:
       - "4000:4000"
@@ -29,7 +29,7 @@ services:
   frontend:
     build: ./frontend
     environment:
-      VITE_API_URL: http://localhost:4000/api
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:4000/api}
     ports:
       - "3000:3000"
     depends_on:

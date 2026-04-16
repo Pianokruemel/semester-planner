@@ -1,6 +1,16 @@
-# Stundenplan App
+# Semester Planner
 
 Local full-stack web app for planning university courses and appointments.
+
+This repository is public and intended for local use, learning, and extension by others.
+
+## Transparency Notice
+
+This project was generated with AI assistance.
+
+- The implementation was produced primarily from AI-generated output.
+- Please review and test before relying on it for important planning decisions.
+- Full notice: [DISCLAIMER.md](DISCLAIMER.md)
 
 ## Features
 
@@ -40,6 +50,22 @@ The backend startup path inside Docker is deterministic:
 
 This ensures the schema and default rows exist before requests are served.
 
+## Architecture Visual
+
+```mermaid
+flowchart LR
+  User[User Browser] --> FE[Frontend\nReact + Vite\n:3000]
+  FE -->|HTTP /api| BE[Backend API\nExpress + Prisma\n:4000]
+  BE -->|SQL| DB[(PostgreSQL 16\n:5432)]
+
+  FE -. build .-> Vite[Vite Build]
+  BE -. startup .-> Init[prisma db push\nseed\nstart dev server]
+```
+
+## UI Preview
+
+![Semester Planner Calendar View](images/semester-planner-screenshot.jpeg)
+
 ## Prerequisites
 
 - Docker + Docker Compose
@@ -50,7 +76,14 @@ This ensures the schema and default rows exist before requests are served.
 
 From project root:
 
+Optional: copy the root `.env.example` to `.env` and adjust local defaults:
+
 ```bash
+cp .env.example .env
+```
+
+```bash
+cp .env.example .env
 docker compose up -d --build
 ```
 
@@ -112,6 +145,9 @@ Frontend runs on `http://localhost:3000`.
 
 ### Backend (`backend/.env`)
 
+- `POSTGRES_DB` (default: `stundenplan`)
+- `POSTGRES_USER` (default: `app`)
+- `POSTGRES_PASSWORD` (default: `appsecret`)
 - `DATABASE_URL` (example: `postgres://app:appsecret@localhost:5432/stundenplan`)
 - `PORT` (default: `4000`)
 
@@ -126,6 +162,8 @@ Frontend runs on `http://localhost:3000`.
 ```bash
 cd backend
 npm run dev
+npm run lint
+npm run test
 npm run build
 npm run prisma:generate
 npm run prisma:migrate
@@ -138,6 +176,8 @@ npm run seed
 ```bash
 cd frontend
 npm run dev
+npm run lint
+npm run test
 npm run build
 npm run preview
 ```
@@ -244,13 +284,26 @@ Still good next steps:
 - Add end-to-end smoke script
 - Continue UX polish and component extraction
 
+## Community and Contribution
+
+- Contribution guide: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Security policy: [SECURITY.md](SECURITY.md)
+- Code of conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+
 ## Repository Files
 
 - `docker-compose.yml`
+- `.env.example`
 - `backend/`
 - `frontend/`
+- `CONTRIBUTING.md`
+- `SECURITY.md`
+- `CODE_OF_CONDUCT.md`
+- `DISCLAIMER.md`
 - `design_document_semester_planner.md`
 
 ## License
 
-For private/local study use unless you add a dedicated license file.
+Licensed under MIT. See [LICENSE](LICENSE).
+
+MIT allows use, modification, distribution, and commercial use.
