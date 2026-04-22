@@ -8,8 +8,19 @@ type UnknownFilters = Record<string, unknown>;
 type SettingsPatch = {
   dark_mode?: boolean;
   show_full_name?: boolean;
-  active_filters?: Partial<Settings["active_filters"]>;
+  active_filters?: Settings["active_filters"];
 };
+
+function mergeSettingsPatch(current: Settings, patch: SettingsPatch): Settings {
+  return normalizeSettings({
+    ...current,
+    ...patch,
+    active_filters: {
+      ...current.active_filters,
+      ...(patch.active_filters ?? {})
+    }
+  });
+}
 
 function normalizeSettings(payload: Partial<Settings> | undefined): Settings {
   const rawFilters = (payload?.active_filters ?? {}) as UnknownFilters;
@@ -49,7 +60,9 @@ export function useSettings() {
     queryFn: async () => {
       const response = await apiClient.get<Partial<Settings>>("/settings");
       return normalizeSettings(response.data);
-    }
+    },
+    staleTime: 60_000,
+    refetchOnWindowFocus: false
   });
 }
 
@@ -57,11 +70,23 @@ export function useUpdateSettings() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    onMutate: async (patch) => {
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<Settings>(queryKey);
+
+      if (previous) {
+        queryClient.setQueryData<Settings>(queryKey, mergeSettingsPatch(previous, patch));
+      }
+
+      return { previous };
+    },
     mutationFn: async (settings: SettingsPatch) => {
       await apiClient.patch("/settings", settings);
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey });
+    onError: (_error, _patch, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData<Settings>(queryKey, context.previous);
+      }
     }
   });
 }

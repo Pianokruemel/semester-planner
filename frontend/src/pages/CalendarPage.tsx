@@ -32,7 +32,7 @@ export function CalendarPage({ showFullName }: Props) {
   const { data: courses = [], isLoading } = useCourses();
   const toggleCourse = useToggleCourse();
   const { data: settings } = useSettings();
-  const updateSettings = useUpdateSettings();
+  const { mutate: patchSettings } = useUpdateSettings();
   const [selectedCps, setSelectedCps] = useState<number[]>([]);
   const [hideTypes, setHideTypes] = useState<AppointmentType[]>([]);
   const [showRoom, setShowRoom] = useState(true);
@@ -44,6 +44,7 @@ export function CalendarPage({ showFullName }: Props) {
   const [actionStatus, setActionStatus] = useState("");
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const hasHydratedFilters = useRef(false);
+  const lastSavedFiltersKey = useRef("");
 
   useEffect(() => {
     if (!isFilterOpen) {
@@ -70,12 +71,22 @@ export function CalendarPage({ showFullName }: Props) {
     }
 
     const persisted = settings.active_filters;
-    setSelectedCps(Array.isArray(persisted.cp) ? persisted.cp : []);
-    setHideTypes(Array.isArray(persisted.hideTypes) ? persisted.hideTypes : []);
-    setShowRoom(typeof persisted.showRoom === "boolean" ? persisted.showRoom : true);
-    setShowType(typeof persisted.showType === "boolean" ? persisted.showType : true);
-    setShowTime(typeof persisted.showTime === "boolean" ? persisted.showTime : true);
-    setShowTotalCp(typeof persisted.showTotalCp === "boolean" ? persisted.showTotalCp : true);
+    const normalizedFilters = {
+      cp: Array.isArray(persisted.cp) ? persisted.cp : [],
+      hideTypes: Array.isArray(persisted.hideTypes) ? persisted.hideTypes : [],
+      showRoom: typeof persisted.showRoom === "boolean" ? persisted.showRoom : true,
+      showType: typeof persisted.showType === "boolean" ? persisted.showType : true,
+      showTime: typeof persisted.showTime === "boolean" ? persisted.showTime : true,
+      showTotalCp: typeof persisted.showTotalCp === "boolean" ? persisted.showTotalCp : true
+    };
+
+    setSelectedCps(normalizedFilters.cp);
+    setHideTypes(normalizedFilters.hideTypes);
+    setShowRoom(normalizedFilters.showRoom);
+    setShowType(normalizedFilters.showType);
+    setShowTime(normalizedFilters.showTime);
+    setShowTotalCp(normalizedFilters.showTotalCp);
+    lastSavedFiltersKey.current = JSON.stringify(normalizedFilters);
     hasHydratedFilters.current = true;
   }, [settings]);
 
@@ -84,23 +95,31 @@ export function CalendarPage({ showFullName }: Props) {
       return;
     }
 
+    const nextFilters = {
+      cp: selectedCps,
+      hideTypes,
+      showRoom,
+      showType,
+      showTime,
+      showTotalCp
+    };
+    const nextFiltersKey = JSON.stringify(nextFilters);
+
+    if (nextFiltersKey === lastSavedFiltersKey.current) {
+      return;
+    }
+
     const timer = window.setTimeout(() => {
-      updateSettings.mutate({
-        active_filters: {
-          cp: selectedCps,
-          hideTypes,
-          showRoom,
-          showType,
-          showTime,
-          showTotalCp
-        }
+      patchSettings({
+        active_filters: nextFilters
       });
+      lastSavedFiltersKey.current = nextFiltersKey;
     }, 300);
 
     return () => {
       window.clearTimeout(timer);
     };
-  }, [hideTypes, selectedCps, showRoom, showTime, showTotalCp, showType, updateSettings]);
+  }, [hideTypes, patchSettings, selectedCps, showRoom, showTime, showTotalCp, showType]);
 
   const cpChoices = useMemo(
     () => Array.from(new Set(courses.map((course) => course.cp))).sort((a, b) => a - b),

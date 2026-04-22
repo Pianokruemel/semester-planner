@@ -1,23 +1,59 @@
 import { NavLink, Route, Routes } from "react-router-dom";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { defaultSettings, Settings } from "./api/types";
 import { useSettings, useUpdateSettings } from "./hooks/useSettings";
 import { CalendarPage } from "./pages/CalendarPage";
 import { CategoriesPage } from "./pages/CategoriesPage";
 import { CourseFormPage } from "./pages/CourseFormPage";
 
+const themeStorageKey = "theme_mode";
+
+function readStoredTheme(): "light" | "dark" | null {
+  const raw = window.localStorage.getItem(themeStorageKey);
+  return raw === "light" || raw === "dark" ? raw : null;
+}
+
 function App() {
   const { data: settings } = useSettings();
   const updateSettings = useUpdateSettings();
+  const [themeMode, setThemeMode] = useState<"light" | "dark">(() => readStoredTheme() ?? "light");
+  const hasHydratedThemeFromSettings = useRef(false);
 
   const mergedSettings = useMemo(() => settings ?? defaultSettings, [settings]);
 
   useEffect(() => {
-    document.documentElement.classList.toggle("dark", mergedSettings.dark_mode);
-  }, [mergedSettings.dark_mode]);
+    document.documentElement.classList.toggle("dark", themeMode === "dark");
+  }, [themeMode]);
+
+  useEffect(() => {
+    if (hasHydratedThemeFromSettings.current || !settings) {
+      return;
+    }
+
+    const storedTheme = readStoredTheme();
+    if (storedTheme) {
+      setThemeMode(storedTheme);
+      hasHydratedThemeFromSettings.current = true;
+      return;
+    }
+
+    const nextTheme = settings.dark_mode ? "dark" : "light";
+    setThemeMode(nextTheme);
+    window.localStorage.setItem(themeStorageKey, nextTheme);
+    hasHydratedThemeFromSettings.current = true;
+  }, [settings]);
 
   function saveSettings(next: Partial<Settings>) {
     updateSettings.mutate(next);
+  }
+
+  function toggleTheme() {
+    setThemeMode((current) => {
+      const next = current === "dark" ? "light" : "dark";
+      window.localStorage.setItem(themeStorageKey, next);
+      saveSettings({ dark_mode: next === "dark" });
+      return next;
+    });
   }
 
   return (
@@ -45,13 +81,9 @@ function App() {
           </button>
           <button
             type="button"
-            onClick={() =>
-              saveSettings({
-                dark_mode: !mergedSettings.dark_mode
-              })
-            }
+            onClick={toggleTheme}
           >
-            {mergedSettings.dark_mode ? "Hell" : "Dunkel"}
+            {themeMode === "dark" ? "Hell" : "Dunkel"}
           </button>
         </div>
       </header>

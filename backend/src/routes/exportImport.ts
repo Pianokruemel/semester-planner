@@ -79,6 +79,8 @@ exportImportRouter.post("/json", async (req, res) => {
   const payload = importSchema.parse(req.body);
 
   await prisma.$transaction(async (tx: any) => {
+    const currentDarkMode = await tx.setting.findUnique({ where: { key: "dark_mode" } });
+
     await tx.appointment.deleteMany();
     await tx.course.deleteMany();
     await tx.category.deleteMany();
@@ -120,14 +122,28 @@ exportImportRouter.post("/json", async (req, res) => {
       });
     }
 
-    const settingRows = Object.entries(payload.settings).map(([key, value]) => ({
+    const settingRows = Object.entries(payload.settings)
+      .filter(([key]) => key !== "dark_mode")
+      .map(([key, value]) => ({
+        key,
+        value: JSON.stringify(value)
+      }));
+
+    settingRows.push({
+      key: "dark_mode",
+      value:
+        currentDarkMode?.value ??
+        (typeof payload.settings.dark_mode === "boolean" ? JSON.stringify(payload.settings.dark_mode) : "false")
+    });
+
+    const deduplicatedSettings = settingRows.map(({ key, value }) => ({
       key,
-      value: JSON.stringify(value)
+      value
     }));
 
-    if (settingRows.length > 0) {
+    if (deduplicatedSettings.length > 0) {
       await tx.setting.createMany({
-        data: settingRows
+        data: deduplicatedSettings
       });
     }
   });
