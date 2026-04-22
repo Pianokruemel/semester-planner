@@ -38,6 +38,7 @@ export function CalendarPage({ showFullName }: Props) {
   const [showRoom, setShowRoom] = useState(true);
   const [showType, setShowType] = useState(true);
   const [showTime, setShowTime] = useState(true);
+  const [showTotalCp, setShowTotalCp] = useState(true);
   const [view, setView] = useState<"week" | "day" | "month">("week");
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [actionStatus, setActionStatus] = useState("");
@@ -74,6 +75,7 @@ export function CalendarPage({ showFullName }: Props) {
     setShowRoom(typeof persisted.showRoom === "boolean" ? persisted.showRoom : true);
     setShowType(typeof persisted.showType === "boolean" ? persisted.showType : true);
     setShowTime(typeof persisted.showTime === "boolean" ? persisted.showTime : true);
+    setShowTotalCp(typeof persisted.showTotalCp === "boolean" ? persisted.showTotalCp : true);
     hasHydratedFilters.current = true;
   }, [settings]);
 
@@ -90,7 +92,8 @@ export function CalendarPage({ showFullName }: Props) {
           hideTypes,
           showRoom,
           showType,
-          showTime
+          showTime,
+          showTotalCp
         }
       });
     }, 300);
@@ -98,12 +101,19 @@ export function CalendarPage({ showFullName }: Props) {
     return () => {
       window.clearTimeout(timer);
     };
-  }, [hideTypes, selectedCps, settings, showRoom, showTime, showType, updateSettings]);
+  }, [hideTypes, selectedCps, settings, showRoom, showTime, showTotalCp, showType, updateSettings]);
 
   const cpChoices = useMemo(
     () => Array.from(new Set(courses.map((course) => course.cp))).sort((a, b) => a - b),
     [courses]
   );
+
+  const totalSelectedCp = useMemo(() => {
+    return courses
+      .filter((course) => course.isActive)
+      .filter((course) => selectedCps.length === 0 || selectedCps.includes(course.cp))
+      .reduce((sum, course) => sum + course.cp, 0);
+  }, [courses, selectedCps]);
 
   const events = useMemo(() => {
     return courses
@@ -363,6 +373,10 @@ export function CalendarPage({ showFullName }: Props) {
             <input type="checkbox" checked={showTime} onChange={() => setShowTime((v) => !v)} />
             <span>Uhrzeit anzeigen</span>
           </label>
+          <label className="check-row">
+            <input type="checkbox" checked={showTotalCp} onChange={() => setShowTotalCp((v) => !v)} />
+            <span>CP-Summe anzeigen</span>
+          </label>
           <div className="filter-actions">
             <button
               type="button"
@@ -372,6 +386,7 @@ export function CalendarPage({ showFullName }: Props) {
                 setShowRoom(true);
                 setShowType(true);
                 setShowTime(true);
+                setShowTotalCp(true);
               }}
             >
               Filter zuruecksetzen
@@ -415,6 +430,7 @@ export function CalendarPage({ showFullName }: Props) {
             <button type="button" onClick={() => navigateCalendar("today")}>Heute</button>
             <button type="button" onClick={() => navigateCalendar("next")}>Weiter</button>
             <span className="calendar-range-label">{visibleRangeLabel}</span>
+            {showTotalCp ? <span className="cp-total-badge">Gesamt: {totalSelectedCp} CP</span> : null}
           </div>
           <div className="view-tabs">
             <button type="button" className={view === "week" ? "active" : ""} onClick={() => setView("week")}>

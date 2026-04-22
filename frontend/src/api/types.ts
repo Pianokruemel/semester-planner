@@ -39,6 +39,7 @@ export type Settings = {
     showRoom: boolean;
     showType: boolean;
     showTime: boolean;
+    showTotalCp: boolean;
   };
 };
 
@@ -50,6 +51,7 @@ export const defaultSettings: Settings = {
     hideTypes: [],
     showRoom: true,
     showType: true,
-    showTime: true
+    showTime: true,
+    showTotalCp: true
   }
 };

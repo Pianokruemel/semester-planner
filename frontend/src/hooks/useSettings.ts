@@ -29,7 +29,11 @@ function normalizeSettings(payload: Partial<Settings> | undefined): Settings {
       showType:
         typeof rawFilters.showType === "boolean" ? rawFilters.showType : defaultSettings.active_filters.showType,
       showTime:
-        typeof rawFilters.showTime === "boolean" ? rawFilters.showTime : defaultSettings.active_filters.showTime
+        typeof rawFilters.showTime === "boolean" ? rawFilters.showTime : defaultSettings.active_filters.showTime,
+      showTotalCp:
+        typeof rawFilters.showTotalCp === "boolean"
+          ? rawFilters.showTotalCp
+          : defaultSettings.active_filters.showTotalCp
     }
   };
 }

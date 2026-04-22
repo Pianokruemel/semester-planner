@@ -443,6 +443,19 @@ textarea:disabled {
   font-weight: 700;
 }
 
+.cp-total-badge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(29, 78, 216, 0.26);
+  background: rgba(29, 78, 216, 0.12);
+  color: var(--accent);
+  border-radius: 999px;
+  padding: 0.28rem 0.62rem;
+  font-size: 0.86rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .status-text {
   margin: 0.75rem 0 0;
   font-size: 0.9rem;
