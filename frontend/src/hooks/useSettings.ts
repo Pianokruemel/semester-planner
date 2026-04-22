@@ -5,6 +5,11 @@ import { defaultSettings, Settings } from "../api/types";
 const queryKey = ["settings"];
 
 type UnknownFilters = Record<string, unknown>;
+type SettingsPatch = {
+  dark_mode?: boolean;
+  show_full_name?: boolean;
+  active_filters?: Partial<Settings["active_filters"]>;
+};
 
 function normalizeSettings(payload: Partial<Settings> | undefined): Settings {
   const rawFilters = (payload?.active_filters ?? {}) as UnknownFilters;
@@ -52,8 +57,8 @@ export function useUpdateSettings() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (settings: Settings) => {
-      await apiClient.put("/settings", settings);
+    mutationFn: async (settings: SettingsPatch) => {
+      await apiClient.patch("/settings", settings);
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey });

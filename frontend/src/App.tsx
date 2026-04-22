@@ -1,6 +1,6 @@
 import { NavLink, Route, Routes } from "react-router-dom";
 import { useEffect, useMemo } from "react";
-import { defaultSettings } from "./api/types";
+import { defaultSettings, Settings } from "./api/types";
 import { useSettings, useUpdateSettings } from "./hooks/useSettings";
 import { CalendarPage } from "./pages/CalendarPage";
 import { CategoriesPage } from "./pages/CategoriesPage";
@@ -16,7 +16,7 @@ function App() {
     document.documentElement.classList.toggle("dark", mergedSettings.dark_mode);
   }, [mergedSettings.dark_mode]);
 
-  function saveSettings(next: typeof mergedSettings) {
+  function saveSettings(next: Partial<Settings>) {
     updateSettings.mutate(next);
   }
 
@@ -37,7 +37,6 @@ function App() {
             type="button"
             onClick={() =>
               saveSettings({
-                ...mergedSettings,
                 show_full_name: !mergedSettings.show_full_name
               })
             }
@@ -48,7 +47,6 @@ function App() {
             type="button"
             onClick={() =>
               saveSettings({
-                ...mergedSettings,
                 dark_mode: !mergedSettings.dark_mode
               })
             }

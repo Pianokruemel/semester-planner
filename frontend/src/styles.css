@@ -16,6 +16,11 @@
   --success: #0f766e;
   --accent: #1d4ed8;
   --accent-soft: rgba(29, 78, 216, 0.12);
+  --cp-badge-border: rgba(29, 78, 216, 0.26);
+  --cp-badge-bg: rgba(29, 78, 216, 0.12);
+  --cp-badge-text: #1d4ed8;
+  --calendar-grid-major: rgba(148, 163, 184, 0.24);
+  --calendar-grid-minor: rgba(148, 163, 184, 0.12);
   --mint: #14b8a6;
   --page-bg:
     radial-gradient(circle at 18% 10%, rgba(125, 211, 252, 0.42), transparent 32%),
@@ -446,9 +451,9 @@ textarea:disabled {
 .cp-total-badge {
   display: inline-flex;
   align-items: center;
-  border: 1px solid rgba(29, 78, 216, 0.26);
-  background: rgba(29, 78, 216, 0.12);
-  color: var(--accent);
+  border: 1px solid var(--cp-badge-border);
+  background: var(--cp-badge-bg);
+  color: var(--cp-badge-text);
   border-radius: 999px;
   padding: 0.28rem 0.62rem;
   font-size: 0.86rem;
@@ -489,7 +494,11 @@ textarea:disabled {
 .rbc-month-row + .rbc-month-row,
 .rbc-day-bg + .rbc-day-bg,
 .rbc-timeslot-group {
-  border-color: rgba(148, 163, 184, 0.24);
+  border-color: var(--calendar-grid-major);
+}
+
+.rbc-time-slot {
+  border-top: 1px solid var(--calendar-grid-minor);
 }
 
 .rbc-header,
@@ -515,6 +524,11 @@ textarea:disabled {
   --text-subtle: #9fbcda;
   --border-soft: 1px solid rgba(148, 163, 184, 0.28);
   --control-bg: rgba(15, 23, 42, 0.6);
+  --cp-badge-border: rgba(125, 211, 252, 0.34);
+  --cp-badge-bg: rgba(14, 165, 233, 0.18);
+  --cp-badge-text: #bae6fd;
+  --calendar-grid-major: rgba(125, 170, 214, 0.28);
+  --calendar-grid-minor: rgba(125, 170, 214, 0.14);
   --glass-bg: linear-gradient(145deg, rgba(16, 40, 66, 0.72), rgba(8, 23, 41, 0.58));
   --glass-border: 1px solid rgba(125, 170, 214, 0.2);
   --glass-highlight: inset 0 1px 0 rgba(201, 228, 255, 0.08);
@@ -551,6 +565,21 @@ textarea:disabled {
 .dark .rbc-header,
 .dark .rbc-time-header-content {
   background: rgba(8, 23, 41, 0.5);
+}
+
+.dark .rbc-time-view,
+.dark .rbc-month-view,
+.dark .rbc-header,
+.dark .rbc-time-header,
+.dark .rbc-time-content,
+.dark .rbc-month-row + .rbc-month-row,
+.dark .rbc-day-bg + .rbc-day-bg,
+.dark .rbc-timeslot-group {
+  border-color: var(--calendar-grid-major);
+}
+
+.dark .rbc-time-slot {
+  border-top-color: var(--calendar-grid-minor);
 }
 
 .dark .rbc-off-range-bg {

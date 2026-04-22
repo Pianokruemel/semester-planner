@@ -80,13 +80,12 @@ export function CalendarPage({ showFullName }: Props) {
   }, [settings]);
 
   useEffect(() => {
-    if (!settings || !hasHydratedFilters.current) {
+    if (!hasHydratedFilters.current) {
       return;
     }
 
     const timer = window.setTimeout(() => {
       updateSettings.mutate({
-        ...settings,
         active_filters: {
           cp: selectedCps,
           hideTypes,
@@ -101,7 +100,7 @@ export function CalendarPage({ showFullName }: Props) {
     return () => {
       window.clearTimeout(timer);
     };
-  }, [hideTypes, selectedCps, settings, showRoom, showTime, showTotalCp, showType, updateSettings]);
+  }, [hideTypes, selectedCps, showRoom, showTime, showTotalCp, showType, updateSettings]);
 
   const cpChoices = useMemo(
     () => Array.from(new Set(courses.map((course) => course.cp))).sort((a, b) => a - b),
