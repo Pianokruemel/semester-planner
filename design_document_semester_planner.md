@@ -1,322 +1,315 @@
 # Designdokument: Stundenplan-App
 
-**Version:** 1.0  
-**Datum:** 30. März 2026  
+**Version:** 2.0  
+**Datum:** 23. April 2026  
 **Sprache der UI:** Deutsch  
-**Deployment:** Lokal via Docker  
+**Deployment:** Lokal via Docker oder als oeffentlicher, anonymer Share-Dienst  
 
 ---
 
-## 1. Projektübersicht
+## 1. Projektuebersicht
 
-Die Stundenplan-App ist eine lokal betriebene Webanwendung zur Organisation und Planung von Lehrveranstaltungen im Studium. Das zentrale Element ist ein interaktiver Kalender, in dem Kurse mit ihren Einzelterminen visualisiert werden. Kurse können aus dem TUCaN-Terminformat importiert, kategorisiert, gefiltert und als ICS-Datei exportiert werden.
+Die Stundenplan-App ist eine Webanwendung fuer Studienplanung mit einem klaren Privacy-Schnitt:
 
----
+- Der Browser besitzt den fachlichen Zustand.
+- Termin-Parsing, Verschluesselung, Entschluesselung und ICS-Export laufen ausschliesslich im Browser.
+- Das Backend speichert nur verschluesselte Snapshots und minimale Metadaten.
 
-## 2. Systemarchitektur
-
-Die Anwendung besteht aus drei Docker-Containern, die über Docker Compose orchestriert werden:
-
-```
-┌─────────────────────────────────────────────┐
-│              Docker Compose                 │
-│                                             │
-│  ┌──────────────┐   ┌──────────────────┐   │
-│  │  Frontend    │   │    Backend       │   │
-│  │  React/Vite  │◄──►  Node.js/Express│   │
-│  │  Port: 3000  │   │  Port: 4000      │   │
-│  └──────────────┘   └────────┬─────────┘   │
-│                               │             │
-│                    ┌──────────▼─────────┐   │
-│                    │    PostgreSQL      │   │
-│                    │    Port: 5432      │   │
-│                    └───────────────────┘   │
-└─────────────────────────────────────────────┘
-```
-
-### 2.1 Container-Übersicht
-
-| Container     | Image              | Port  | Beschreibung                        |
-|---------------|--------------------|-------|-------------------------------------|
-| frontend      | node:20-alpine     | 3000  | React + Vite SPA                    |
-| backend       | node:20-alpine     | 4000  | REST API (Express)                  |
-| db            | postgres:16-alpine | 5432  | Persistente Datenbank               |
-
-### 2.2 Docker Compose Konfiguration (Übersicht)
-
-```yaml
-services:
-  db:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: stundenplan
-      POSTGRES_USER: app
-      POSTGRES_PASSWORD: <secret>
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-
-  backend:
-    build: ./backend
-    ports: ["4000:4000"]
-    environment:
-      DATABASE_URL: postgres://app:<secret>@db:5432/stundenplan
-    depends_on: [db]
-
-  frontend:
-    build: ./frontend
-    ports: ["3000:3000"]
-    environment:
-      VITE_API_URL: http://localhost:4000
-
-volumes:
-  pgdata:
-```
+Das oeffentliche Laufzeitmodell ist kein serverseitiges CRUD-System mehr, sondern ein anonymer Snapshot-Speicher mit menschenlesbaren Codes.
 
 ---
 
-## 3. Tech Stack
+## 2. Ziele und Nicht-Ziele
 
-| Bereich      | Technologie                        | Begründung                                              |
-|--------------|------------------------------------|---------------------------------------------------------|
-| Frontend     | React 18 + Vite + TypeScript       | Modern, schnell, reaktiv; Vite für schnellen Dev-Build  |
-| Styling      | Tailwind CSS + shadcn/ui           | Modernes, schickes Design mit abgerundeten Komponenten  |
-| Kalender     | react-big-calendar oder FullCalendar| Fertige Kalender-Komponente mit Woche/Tag/Monat         |
-| Backend      | Node.js 20 + Express + TypeScript  | Schlank, weit verbreitet, einfach                       |
-| ORM          | Prisma                             | Typsichere DB-Anbindung, einfache Migrations            |
-| Datenbank    | PostgreSQL 16                      | Robust, Docker-kompatibel                               |
-| Dark Mode    | Tailwind dark-class Strategie      | Toggle via CSS-Klasse auf <html>                        |
-| ICS-Export   | ical.js oder ics (npm)             | Standardkonformer iCalendar-Export                      |
+### 2.1 Ziele
+
+- Oeffentliches Hosting ohne Benutzerkonten
+- Acht-Wort-Codes fuer Teilen und Wiederoeffnen
+- Browserseitige Ende-zu-Ende-Verschluesselung fuer geteilte Daten
+- Lokaler Planner Store fuer alle Bearbeitungen
+- Immutable Snapshot-Semantik mit Extend-Funktion und Parent-Linkage
+
+### 2.2 Nicht-Ziele
+
+- Serverseitige Dechiffrierung
+- Passwort-Reset oder Code-Wiederherstellung
+- Geteilte UI-Praeferenzen
+- Deterministische serverseitige Deduplikation identischer Plannerdaten
+
+---
+
+## 3. Systemarchitektur
+
+Die Anwendung besteht weiterhin aus drei Containern, aber die Verantwortlichkeiten haben sich verschoben:
+
+```
+┌──────────────────────────────────────────────┐
+│               Docker Compose                 │
+│                                              │
+│  ┌──────────────┐    ┌───────────────────┐   │
+│  │  Frontend    │    │     Backend       │   │
+│  │ React/Vite   │───►│ Express Share API │   │
+│  │ Port: 3000   │    │ Port: 4000        │   │
+│  │              │◄───│                   │   │
+│  └──────────────┘    └────────┬──────────┘   │
+│                                │              │
+│                     ┌──────────▼──────────┐   │
+│                     │     PostgreSQL      │   │
+│                     │   share_snapshots   │   │
+│                     └─────────────────────┘   │
+└──────────────────────────────────────────────┘
+```
+
+### 3.1 Browser-Verantwortung
+
+- Planner Store und lokale Entwurfswiederaufnahme
+- Kategorien, Kurse, Termine, `is_active`
+- TUCaN-Parsing mit Live-Preview
+- AES-GCM-Verschluesselung und Entschluesselung
+- Acht-Wort-Code-Generierung
+- Ableitung von Locator und Schluessel aus dem vollen Code
+- ICS-Export aus entschluesseltem Zustand
+- Persistenz lokaler UI-Praeferenzen
+
+### 3.2 Backend-Verantwortung
+
+- Validierung der Envelope-Form
+- Speicherung und Auslieferung verschluesselter Snapshots
+- Ratenbegrenzung auf Create und Fetch
+- Keine Verarbeitung oder Persistenz von Planner-Klartext
 
 ---
 
 ## 4. Datenmodell
 
-### 4.1 Entity-Relationship-Übersicht
+### 4.1 Geteilter Klartext-Snapshot im Browser
 
-```
-Category ──< Course ──< Appointment
-```
+Der Browser verwendet einen Snapshot im Export-Stil als Klartext-Payload, bevor er verschluesselt wird:
 
-### 4.2 Tabelle: categories
-
-| Feld       | Typ          | Constraints         | Beschreibung              |
-|------------|--------------|---------------------|---------------------------|
-| id         | UUID         | PK, auto            | Primärschlüssel           |
-| name       | VARCHAR(100) | NOT NULL, UNIQUE    | z. B. "Seminar"           |
-| color      | CHAR(7)      | NOT NULL            | Hex-Farbcode, z. B. #3B82F6|
-| created_at | TIMESTAMP    | DEFAULT NOW()       | Erstellungszeitpunkt      |
-
-**Standard-Einträge beim ersten Start:**
-- „Seminar" (#6366F1)
-- „Praktikum" (#10B981)
-
-### 4.3 Tabelle: courses
-
-| Feld          | Typ          | Constraints              | Beschreibung                          |
-|---------------|--------------|--------------------------|---------------------------------------|
-| id            | UUID         | PK, auto                 | Primärschlüssel                       |
-| name          | VARCHAR(255) | NOT NULL                 | Vollständiger Kursname                |
-| abbreviation  | VARCHAR(50)  | NOT NULL                 | Abkürzung für Kalenderansicht         |
-| cp            | INTEGER      | NOT NULL, CHECK > 0      | Credit Points                         |
-| category_id   | UUID         | FK → categories.id, NULL | Kategorie; NULL = "Ohne Kategorie"    |
-| is_active     | BOOLEAN      | DEFAULT true             | Sichtbarkeit im Kalender              |
-| created_at    | TIMESTAMP    | DEFAULT NOW()            | Erstellungszeitpunkt                  |
-
-### 4.4 Tabelle: appointments
-
-| Feld       | Typ          | Constraints              | Beschreibung                              |
-|------------|--------------|--------------------------|-------------------------------------------|
-| id         | UUID         | PK, auto                 | Primärschlüssel                           |
-| course_id  | UUID         | FK → courses.id, CASCADE | Zugehöriger Kurs                          |
-| date       | DATE         | NOT NULL                 | Datum des Termins                         |
-| time_from  | TIME         | NOT NULL                 | Startzeit                                 |
-| time_to    | TIME         | NOT NULL                 | Endzeit                                   |
-| room       | VARCHAR(255) | NOT NULL                 | Raumbezeichnung (Link-Markup entfernt)    |
-| type       | ENUM         | 'Vorlesung','Uebung'     | Abgeleitet aus Sternchen-Logik            |
-| created_at | TIMESTAMP    | DEFAULT NOW()            | Erstellungszeitpunkt                      |
-
-### 4.5 Tabelle: settings
-
-| Feld  | Typ          | Constraints      | Beschreibung                    |
-|-------|--------------|------------------|---------------------------------|
-| key   | VARCHAR(100) | PK               | Einstellungsschlüssel           |
-| value | TEXT         | NOT NULL         | Einstellungswert (JSON-kodiert) |
-
-**Gespeicherte Einstellungen:**
-- `dark_mode`: boolean
-- `show_full_name`: boolean (false = Abkürzung anzeigen)
-- `active_filters`: JSON-Objekt mit CP-, Typ- und Anzeigefiltern
-
----
-
-## 5. Termin-Parsing-Logik
-
-### 5.1 Eingabeformat (TUCaN-Format)
-
-Der Nutzer fügt den Termintext aus TUCaN in ein Freitextfeld ein. Das Format ist tabellarisch mit einer Zeile pro Termin:
-
-```
-Nr\tDatum\tVon\tBis\tRaum\tLehrende
-1\tMo, 13. Apr. 2026*\t08:55\t10:35\tS311/08\t...
-2\tDi, 14. Apr. 2026\t09:50\t11:30\tS202/C205\t...
-...
-```
-
-Hinweise:
-- Die Kopfzeile (`Datum`, `Von`, `Bis`, `Raum`, `Lehrende`) ist optional.
-- Felder sind primär tab-separiert; bei verloren gegangenen Tabs werden auch mehrere Leerzeichen als Trennung akzeptiert.
-- Die Spalte `Lehrende` wird ignoriert.
-
-### 5.2 Parsing-Algorithmus
-
-```
-1. Text zeilenweise splitten, leere Zeilen entfernen
-2. Erste Zeile prüfen:
-  - Wenn Kopfzeile (Datum/Von/Bis/Raum/Lehrende) erkannt → überspringen
-3. Pro Terminzeile:
-  a. Spalten extrahieren (Tab oder Mehrfach-Leerzeichen)
-  b. Laufende Nummer (falls vorhanden) ignorieren
-  c. Datum parsen
-    - Sternchen am Ende → hasAsterisk = true
-    - Deutschen Monatsnamen → Date-Objekt konvertieren
-  d. time_from und time_to (HH:MM) parsen
-  e. Raum extrahieren
-    - Markdown-Link [Text](URL) → nur Text behalten
-  f. Lehrende ignorieren
-4. Nach Verarbeitung aller Blöcke:
-   - Wenn mindestens EIN Termin hasAsterisk = true:
-       → hasAsterisk = true  ⟹ type = 'Vorlesung'
-       → hasAsterisk = false ⟹ type = 'Uebung'
-   - Wenn KEIN Termin hasAsterisk:
-       → Alle type = 'Vorlesung'
-5. Appointments in DB speichern (bulk insert)
-```
-
-### 5.3 Monatsmapping (Deutsch)
-
-```
-Jan. → 1, Feb. → 2, Mär. → 3, Apr. → 4, Mai → 5, Jun. → 6,
-Jul. → 7, Aug. → 8, Sep. → 9, Okt. → 10, Nov. → 11, Dez. → 12
-```
-
----
-
-## 6. REST API
-
-**Base URL:** `http://localhost:4000/api`
-
-### 6.1 Kurse
-
-| Method | Endpunkt             | Beschreibung                              |
-|--------|----------------------|-------------------------------------------|
-| GET    | /courses             | Alle Kurse abrufen (inkl. Appointments)   |
-| POST   | /courses             | Neuen Kurs erstellen                      |
-| PUT    | /courses/:id         | Kurs bearbeiten                           |
-| DELETE | /courses/:id         | Kurs löschen (cascade auf Appointments)   |
-| PATCH  | /courses/:id/toggle  | is_active umschalten                      |
-
-**POST /courses – Request Body:**
 ```json
 {
-  "name": "IT-Sicherheit",
-  "abbreviation": "ITS",
-  "cp": 6,
-  "category_id": "uuid-...",
-  "appointments_raw": "<TUCaN-Termintext>"
+  "export_version": "2.0",
+  "settings": {},
+  "categories": [
+    { "id": "uuid", "name": "Seminar", "color": "#6366F1" }
+  ],
+  "courses": [
+    {
+      "id": "uuid",
+      "name": "IT-Sicherheit",
+      "abbreviation": "ITS",
+      "cp": 6,
+      "category_id": "uuid-or-null",
+      "is_active": true,
+      "appointments": [
+        {
+          "date": "2026-04-13",
+          "time_from": "08:55",
+          "time_to": "10:35",
+          "room": "S311/08",
+          "type": "Vorlesung"
+        }
+      ]
+    }
+  ]
 }
 ```
 
-### 6.2 Kategorien
+`settings` bleibt absichtlich leer, damit keine geraetelokalen UI-Einstellungen geteilt werden.
 
-| Method | Endpunkt          | Beschreibung                                    |
-|--------|-------------------|-------------------------------------------------|
-| GET    | /categories       | Alle Kategorien abrufen                         |
-| POST   | /categories       | Neue Kategorie erstellen                        |
-| PUT    | /categories/:id   | Kategorie bearbeiten                            |
-| DELETE | /categories/:id   | Kategorie löschen (Kurse → category_id = NULL)  |
+### 4.2 Device-lokale Praeferenzen
 
-**DELETE /categories/:id – Response bei betroffenen Kursen:**
 ```json
 {
-  "warning": true,
-  "affected_courses": ["IT-Sicherheit", "Kryptographie"],
-  "message": "Diese Kurse werden auf 'Ohne Kategorie' gesetzt."
+  "dark_mode": false,
+  "show_full_name": false,
+  "active_filters": {
+    "cp": [],
+    "hideTypes": [],
+    "showRoom": true,
+    "showType": true,
+    "showTime": true,
+    "showTotalCp": true
+  }
 }
 ```
-→ Frontend zeigt Bestätigungsdialog; DELETE wird erst nach Bestätigung mit `?confirm=true` erneut gesendet.
 
-### 6.3 Einstellungen
+Diese Werte werden nur im Browser gespeichert und nie verschluesselt geteilt.
 
-| Method | Endpunkt    | Beschreibung             |
-|--------|-------------|--------------------------|
-| GET    | /settings   | Alle Einstellungen laden |
-| PUT    | /settings   | Einstellungen speichern  |
+### 4.3 Serverseitige Envelope-Tabelle
 
-### 6.4 Export & Import
+Die Datenbank kennt nur noch eine Tabelle:
 
-| Method | Endpunkt       | Beschreibung                                      |
-|--------|----------------|---------------------------------------------------|
-| GET    | /export/json   | Gesamtdaten als JSON exportieren                  |
-| POST   | /import/json   | JSON-Datei importieren (ersetzt alle Daten)       |
-| GET    | /export/ics    | Gefilterte Termine als ICS-Datei exportieren      |
+| Feld               | Typ          | Beschreibung |
+|--------------------|--------------|--------------|
+| id                 | UUID         | Primarschluessel |
+| locator_hash       | CHAR(64)     | SHA-256 des oeffentlichen Locators |
+| ciphertext         | TEXT         | AES-GCM-Ciphertext, base64url |
+| nonce              | VARCHAR(64)  | AES-GCM-Nonce, base64url |
+| payload_version    | VARCHAR(20)  | Snapshot-Payload-Version |
+| crypto_version     | VARCHAR(64)  | Kryptographie-Version |
+| parent_snapshot_id | UUID NULL    | Optionaler Parent fuer Extend |
+| created_at         | TIMESTAMP    | Erstellungszeit |
+| expires_at         | TIMESTAMP NULL | Optionales Retention-Feld |
 
-**GET /export/ics – Query-Parameter:**
-```
-?cp=3,6          → CP-Filter (kommagetrennt; leer = alle)
-?types=Vorlesung → Typ-Filter
-?courses=id1,id2 → Nur diese aktiven Kurse
-```
-
-**ICS-Felder pro VEVENT:**
-- `SUMMARY`: Kursname oder Abkürzung (je nach `show_full_name`-Setting)
-- `DTSTART` / `DTEND`: Datum + Uhrzeit (Europe/Berlin)
-- `LOCATION`: Raum
-- `DESCRIPTION`: "Kategorie: X | CP: Y"
-- `UID`: Appointment-ID + @stundenplan
+Es existieren keine Tabellen mehr fuer Kategorien, Kurse, Termine oder Settings im Backend.
 
 ---
 
-## 7. Frontend – Seitenstruktur
+## 5. Kryptographie-Format
 
+### 5.1 Code
+
+- Acht zufaellige Woerter
+- Der volle Code ist das Geheimnis
+- Der Code wird nicht in zwei Haelften getrennt
+
+### 5.2 Ableitungen
+
+- `locator = SHA-256("locator:" + normalized_code)`
+- `encryption_key = PBKDF2-SHA-256(normalized_code, fixed_salt, 210000 Iterationen)`
+
+### 5.3 Verschluesselung
+
+- Algorithmus: AES-GCM 256 Bit
+- Nonce: 12 zufaellige Bytes pro Snapshot
+- Klartext: JSON-serialisierter Snapshot
+- Ciphertext und Nonce werden base64url-kodiert gespeichert
+
+### 5.4 Versionierung
+
+- `payload_version = 2.0`
+- `crypto_version = aes-256-gcm+pbkdf2-sha256-v1`
+
+---
+
+## 6. API-Vertrag
+
+**Base URL:** `/api`
+
+### 6.1 POST `/shares`
+
+Request:
+
+```json
+{
+  "locator": "base64url...",
+  "ciphertext": "base64url...",
+  "nonce": "base64url...",
+  "payload_version": "2.0",
+  "crypto_version": "aes-256-gcm+pbkdf2-sha256-v1",
+  "parent_snapshot_id": null
+}
 ```
-/                    → Kalender-Hauptseite
-/courses/new         → Kurs erstellen
-/courses/:id/edit    → Kurs bearbeiten
-/categories          → Kategorien verwalten
+
+Antwort:
+
+```json
+{
+  "id": "uuid",
+  "ciphertext": "base64url...",
+  "nonce": "base64url...",
+  "payload_version": "2.0",
+  "crypto_version": "aes-256-gcm+pbkdf2-sha256-v1",
+  "parent_snapshot_id": null,
+  "created_at": "2026-04-23T10:00:00.000Z",
+  "expires_at": null
+}
 ```
 
-### 7.1 Kalender-Hauptseite (`/`)
+### 6.2 GET `/shares/:locator`
 
-**Layout:** Zweispaltig – linke Sidebar (Filter) + rechter Kalenderbereich
+- Der Client sendet den abgeleiteten Locator.
+- Der Server hasht ihn erneut fuer den Lookup.
+- Die Antwort enthaelt nur die Envelope.
 
-#### Sidebar – Filterbereich
+---
 
-**Abschnitt: Kursauswahl**
-- Liste aller Kurse mit Toggle-Switch (is_active)
-- Farb-Dot der zugehörigen Kategorie
-- Button „+ Kurs hinzufügen" → navigiert zu `/courses/new`
+## 7. Frontend-Zustandsmodell
 
-**Abschnitt: CP-Filter** (Checkboxen)
-- [ ] 3 CP
-- [ ] 6 CP
-- [ ] Andere
+### 7.1 Planner Provider
 
-**Abschnitt: Typ-Filter** (Checkboxen)
-- [ ] Vorlesungen ausblenden
-- [ ] Übungen ausblenden
+Der Provider haelt:
 
-**Abschnitt: Anzeigeoptionen** (Checkboxen)
-- [ ] Raum anzeigen
-- [ ] Typ anzeigen
-- [ ] Uhrzeit anzeigen (Von–Bis zusammen)
+- aktuellen Planner-Snapshot
+- lokale UI-Praeferenzen
+- lokale Draft-Persistenz in `localStorage`
+- Referenz auf den zuletzt gespeicherten Share-Snapshot fuer `hasUnsavedChanges`
 
-**Globale Toggles (oben in der Navbar):**
-- Name/Abkürzung Toggle (Vollständiger Name ↔ Abkürzung)
-- Dark Mode Toggle (Mond/Sonne Icon)
+### 7.2 Hauptaktionen
 
-**Export-Button:** „📥 ICS exportieren" – exportiert gefilterte Ansicht
+- `startNewPlanner()`
+- `resumePersistedDraft()`
+- `createCategory()` / `updateCategory()` / `deleteCategory()`
+- `createCourse()` / `updateCourse()` / `deleteCourse()` / `toggleCourse()`
+- `createShare()`
+- `extendShare()`
+- `openShare(code)`
 
-#### Kalenderbereich
+### 7.3 UI-Fluss
+
+1. Entry-Screen zeigt drei Pfade: neuer Planner, Code oeffnen, lokalen Entwurf fortsetzen.
+2. Nach dem Laden arbeitet die UI ausschliesslich auf lokalem Zustand.
+3. `Create code` speichert einen Snapshot ohne Parent.
+4. `Extend code` speichert einen Snapshot mit `parent_snapshot_id = currentShareId`.
+5. Nach dem Speichern zeigt die UI den neuen Acht-Wort-Code explizit an.
+
+---
+
+## 8. Parsing und Export
+
+### 8.1 TUCaN-Parsing
+
+- Zeilenbasiert
+- Header optional
+- Deutsche Monatsnamen werden unterstuetzt
+- `*` steuert `Vorlesung` vs. `Uebung`
+- Markdown-Links in Raumfeldern werden auf den sichtbaren Text reduziert
+
+### 8.2 ICS-Export
+
+- Erfolgt ausschliesslich im Browser
+- Nutzt lokale Wall-Clock-Zeiten (`YYYYMMDDTHHMMSS` ohne Zwang zu UTC)
+- Exportiert nur den aktuell gefilterten, lokal entschluesselten Zustand
+
+---
+
+## 9. Threat Model
+
+### 9.1 Was der Server sehen kann
+
+- Dass ein Snapshot existiert
+- Erstellungszeit und Parent-Verkettung
+- Locator-Ableitung in gehashter Form
+- Ciphertext und Nonce
+
+### 9.2 Was der Server nicht sehen soll
+
+- Namen von Kursen oder Kategorien
+- Termine, Raeume, Zeiten
+- Welche Kurse aktiv sind
+- Dark Mode oder Filterzustand
+
+### 9.3 Bekannte Einschraenkungen
+
+- Kein Recovery bei verlorenem Code
+- Keine Authentifizierung oder Schreibschutz pro Benutzer
+- Keine serverseitige Konfliktaufloesung fuer parallele Bearbeitung
+
+---
+
+## 10. Verifikation
+
+Primäre Gates:
+
+1. `backend`: `npm run prisma:generate`, `npm run lint`, `npm run build`
+2. `frontend`: `npm run lint`, `npm run build`
+3. Manuelle Share-Roundtrip-Pruefung
+4. Manuelle Privacy-Pruefung in Netzwerk und Datenbank
+5. Manuelle Extend-Pruefung mit altem und neuem Code
+6. Manuelle Parser- und ICS-Paritaet
+
+Es sind weiterhin keine echten automatisierten Produktivtests vorhanden; Lint, Build und manuelle Ablaufpruefungen bleiben die wichtigsten Freigabekriterien.
 
 - Ansichts-Tabs: **Woche | Tag | Monat**
 - Zeitbereich: 07:00 – 20:00 Uhr (Woche/Tag-Ansicht)

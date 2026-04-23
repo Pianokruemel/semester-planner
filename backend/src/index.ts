@@ -2,11 +2,8 @@ import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
 import { ZodError } from "zod";
-import { categoriesRouter } from "./routes/categories";
-import { coursesRouter } from "./routes/courses";
-import { exportImportRouter } from "./routes/exportImport";
-import { settingsRouter } from "./routes/settings";
 import { errorHandler, HttpError, notFoundHandler } from "./middleware/errorHandler";
+import { sharesRouter } from "./routes/shares";
 
 dotenv.config();
 
@@ -20,11 +17,7 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
-app.use("/api/courses", coursesRouter);
-app.use("/api/categories", categoriesRouter);
-app.use("/api/settings", settingsRouter);
-app.use("/api/export", exportImportRouter);
-app.use("/api/import", exportImportRouter);
+app.use("/api/shares", sharesRouter);
 
 app.use(notFoundHandler);
 

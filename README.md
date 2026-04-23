@@ -1,6 +1,6 @@
 # Semester Planner
 
-Local full-stack web app for planning university courses and appointments.
+Code-first semester planning with anonymous encrypted share snapshots. The browser owns planner data, parsing, export, encryption, and decryption; the backend stores only ciphertext plus minimal metadata.
 
 This repository is public and intended for local use, learning, and extension by others.
 
@@ -12,20 +12,56 @@ This project was generated with AI assistance.
 - Please review and test before relying on it for important planning decisions.
 - Full notice: [DISCLAIMER.md](DISCLAIMER.md)
 
+## What Changed
+
+The public runtime is now encrypted-only:
+
+- The frontend creates, edits, filters, parses, encrypts, decrypts, and exports planner data locally.
+- The backend exposes only share snapshot endpoints and stores only ciphertext, nonce, version metadata, parent linkage, and a hashed locator.
+- There is no server-owned plaintext planner mode, no shared settings table, and no backend CRUD for courses or categories.
+
 ## Features
 
-- Calendar views: week, day, month
-- Course CRUD with category assignment and CP values
-- Appointment import from tabular TUCaN text format
-- Live parse preview before saving courses
-- Category CRUD with safe delete confirmation flow
-- Filtering by active courses, CP, appointment type, and display options
-- Settings persistence (dark mode, full name toggle, active filters)
-- Data export/import:
-  - ICS export for filtered appointments
-  - JSON full export/import (including persisted settings)
-- Calendar and edit form use consistent 24h wall-clock times (DST-safe display)
-- Dockerized local deployment (frontend, backend, PostgreSQL)
+- Code-first entry flow: create a new planner, open an existing code, or resume a local draft
+- Local planner editing for categories, courses, appointments, and active course selection
+- Local TUCaN parsing with live preview before saving a course
+- Local ICS export from decrypted planner state
+- Immutable share snapshots with explicit Create code and Extend code actions
+- Device-local UI preferences for dark mode, full-name display, and calendar filters
+- Dockerized deployment with frontend, backend, and PostgreSQL
+
+## Privacy Model
+
+### Shared in the encrypted snapshot
+
+- Categories
+- Courses
+- Appointments
+- `is_active` per course
+
+### Kept device-local only
+
+- `dark_mode`
+- `show_full_name`
+- `active_filters`
+- Any future local display preferences
+
+### Server never stores in plaintext
+
+- Course names and abbreviations
+- Appointment dates, times, rooms, or types
+- Category names or colors
+- Active course selection
+- UI preferences
+
+## Threat Model and Limits
+
+- The server can see that a snapshot exists and can store or delete ciphertext, but it cannot decrypt planner contents without the full eight-word code.
+- Snapshot lookup is derived from the full code, and the database stores only a hash of that locator.
+- Anyone who has the full code can open the snapshot.
+- If the code is lost, the snapshot is unrecoverable by design.
+- There is no account system, password reset flow, or server-side recovery path.
+- Extending a share creates a fresh immutable snapshot with a new code; the old code remains valid for the old snapshot.
 
 ## Tech Stack
 
@@ -40,26 +76,18 @@ The app runs with 3 services:
 
 - `frontend` on port `3000`
 - `backend` on port `4000`
-- `db` (PostgreSQL) on port `5432`
-
-The backend startup path inside Docker is deterministic:
-
-1. `prisma db push`
-2. `npm run seed`
-3. `npm run dev`
-
-This ensures the schema and default rows exist before requests are served.
-
-## Architecture Visual
+- `db` on port `5432`
 
 ```mermaid
 flowchart LR
   User[User Browser] --> FE[Frontend\nReact + Vite\n:3000]
-  FE -->|HTTP /api| BE[Backend API\nExpress + Prisma\n:4000]
-  BE -->|SQL| DB[(PostgreSQL 16\n:5432)]
+  FE -->|POST /api/shares| BE[Backend API\nExpress + Prisma\n:4000]
+  FE -->|GET /api/shares/:locator| BE
+  BE -->|ciphertext only| DB[(PostgreSQL 16\nshare_snapshots)]
 
-  FE -. build .-> Vite[Vite Build]
-  BE -. startup .-> Init[prisma db push\nseed\nstart dev server]
+  FE -. local only .-> Parse[TUCaN Parser]
+  FE -. local only .-> Crypto[AES-GCM + PBKDF2]
+  FE -. local only .-> Export[ICS Export]
 ```
 
 ## UI Preview
@@ -69,28 +97,43 @@ flowchart LR
 ## Prerequisites
 
 - Docker + Docker Compose
-- Node.js 20+ (for non-Docker local development)
+- Node.js 20+
 - npm
 
 ## Quick Start (Docker)
 
 From project root:
 
-Optional: copy the root `.env.example` to `.env` and adjust local defaults:
-
-```bash
-cp .env.example .env
-```
-
 ```bash
 cp .env.example .env
 docker compose up -d --build
 ```
 
-Open:
+This default compose mode keeps the frontend internal to the Docker network and starts `cloudflared`.
+
+- Set `CF_TUNNEL_TOKEN` in `.env` before starting it.
+- The frontend stays reachable to other containers as `frontend:3000` on the shared `planner` network.
+
+For a local browser-accessible dev run, use the override file:
+
+```bash
+cp .env.example .env
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+```
+
+If you want the dev port exposure and `cloudflared` together, add the tunnel profile:
+
+```bash
+cp .env.example .env
+docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile tunnel up -d --build
+```
+
+In that dev mode:
 
 - Frontend: http://localhost:3000
-- Backend API: http://localhost:4000/api
+- Browser API path: http://localhost:3000/api
+
+Backend and database stay internal to the shared Docker network. Containers reach them as `backend:4000` and `db:5432`.
 
 Check service logs:
 
@@ -106,15 +149,15 @@ Stop services:
 docker compose down
 ```
 
-Full reset (including database volume):
+Full reset, including snapshot storage:
 
 ```bash
 docker compose down -v
 ```
 
-## Local Development (without Docker)
+## Local Development
 
-### 1) Backend
+### Backend
 
 ```bash
 cd backend
@@ -122,15 +165,12 @@ npm install
 cp .env.example .env
 npm run prisma:generate
 npx prisma db push
-npm run seed
 npm run dev
 ```
 
-If you have migration files later, you can replace `npx prisma db push` with `npm run prisma:deploy`.
-
 Backend runs on `http://localhost:4000`.
 
-### 2) Frontend
+### Frontend
 
 ```bash
 cd frontend
@@ -143,17 +183,67 @@ Frontend runs on `http://localhost:3000`.
 
 ## Environment Variables
 
+### Docker Compose (`.env` in project root)
+
+- `POSTGRES_DB` default: `stundenplan`
+- `POSTGRES_USER` default: `app`
+- `POSTGRES_PASSWORD` default: `appsecret`
+- `VITE_API_URL` default: `/api`
+- `API_PROXY_TARGET` default: `http://backend:4000`
+- `CF_TUNNEL_TOKEN` default: empty, required for the default tunnel-enabled compose mode
+
 ### Backend (`backend/.env`)
 
-- `POSTGRES_DB` (default: `stundenplan`)
-- `POSTGRES_USER` (default: `app`)
-- `POSTGRES_PASSWORD` (default: `appsecret`)
-- `DATABASE_URL` (example: `postgres://app:appsecret@localhost:5432/stundenplan`)
-- `PORT` (default: `4000`)
+- `POSTGRES_DB` default: `stundenplan`
+- `POSTGRES_USER` default: `app`
+- `POSTGRES_PASSWORD` default: `appsecret`
+- `DATABASE_URL` example: `postgres://app:appsecret@localhost:5432/stundenplan`
+- `PORT` default: `4000`
 
 ### Frontend (`frontend/.env`)
 
-- `VITE_API_URL` (default: `http://localhost:4000/api`)
+- `VITE_API_URL` default: `/api`
+- `API_PROXY_TARGET` default: `http://localhost:4000`
+
+## API Overview
+
+Base URL for browser clients: `/api`
+
+- Docker Compose dev override publishes it at `http://localhost:3000/api` via the frontend proxy.
+- Standalone backend development still serves it directly at `http://localhost:4000/api`.
+
+- `POST /shares` creates an encrypted snapshot envelope
+- `GET /shares/:locator` fetches an encrypted snapshot envelope
+- `GET /health` returns backend health status
+
+`POST /shares` accepts only:
+
+- `locator`
+- `ciphertext`
+- `nonce`
+- `payload_version`
+- `crypto_version`
+- optional `parent_snapshot_id`
+
+`GET /shares/:locator` returns only the encrypted envelope and metadata. It never returns plaintext planner data.
+
+## TUCaN Import Format
+
+The local parser expects row-based tabular input, one appointment per row.
+
+```text
+Nr\tDatum\tVon\tBis\tRaum\tLehrende
+1\tMo, 13. Apr. 2026*\t08:55\t10:35\tS311/08\t...
+2\tDi, 28. Apr. 2026\t09:50\t11:30\tS202/C205 - Bosch Hoersaal\t...
+```
+
+Rules:
+
+- Header row is optional
+- German month names are supported
+- `*` controls lecture/tutorial type mapping
+- The `Lehrende` column is ignored
+- Markdown links in room cells are reduced to plain text
 
 ## Useful Commands
 
@@ -168,7 +258,6 @@ npm run build
 npm run prisma:generate
 npm run prisma:migrate
 npm run prisma:deploy
-npm run seed
 ```
 
 ### Frontend
@@ -182,87 +271,53 @@ npm run build
 npm run preview
 ```
 
-## TUCaN Import Format
+## Manual Verification Checklist
 
-The parser expects row-based, tabular input (one appointment per row), for example:
-
-```text
-Nr\tDatum\tVon\tBis\tRaum\tLehrende
-1\tMo, 13. Apr. 2026*\t08:55\t10:35\tS311/08\t...
-2\tDi, 28. Apr. 2026\t09:50\t11:30\tS202/C205 - Bosch Hoersaal\t...
-```
-
-Rules:
-
-- Header row is optional
-- Date supports German month names (`Jan.`, `Feb.`, `Mär.`, ...)
-- Asterisk (`*`) drives lecture/tutorial type mapping
-- `Lehrende` column is ignored
-- Room markdown links are normalized to plain text
-
-## API Overview
-
-Base URL: `http://localhost:4000/api`
-
-- `GET /courses`
-- `POST /courses`
-- `POST /courses/preview`
-- `PUT /courses/:id`
-- `DELETE /courses/:id`
-- `PATCH /courses/:id/toggle`
-- `GET /categories`
-- `POST /categories`
-- `PUT /categories/:id`
-- `DELETE /categories/:id`
-- `GET /settings`
-- `PUT /settings`
-- `GET /export/json`
-- `POST /import/json`
-- `GET /export/ics`
+1. Create a new planner, add categories and courses, and confirm they stay local until a code is created.
+2. Create a code, reload the app, open the code again, and confirm the decrypted planner matches the pre-save state.
+3. Inspect the network and database to confirm only locator metadata, nonce, versions, and ciphertext are stored server-side.
+4. Open an existing code, make a change, use Extend code, and verify the old code still opens the old snapshot while the new code opens the updated state.
+5. Paste representative TUCaN input and verify the local preview and saved appointments match expectations.
+6. Export ICS and confirm the file reflects the current decrypted planner state.
 
 ## Troubleshooting
 
-### Backend errors: table does not exist (`P2021`)
+### Frontend cannot reach backend
 
-Cause: database not initialized yet.
+- Check `VITE_API_URL`
+- In Docker Compose, ensure `API_PROXY_TARGET` points to `http://backend:4000`
+- In local frontend development, ensure the backend is running on `http://localhost:4000`
+- Inspect the browser network tab plus frontend and backend logs
 
-Fix:
+### A code cannot be opened
+
+- Confirm all eight words are present
+- Confirm the code words were copied exactly
+- Remember that lost codes cannot be recovered
+
+### Database errors after schema changes
 
 ```bash
 docker compose down -v
 docker compose up --build
 ```
 
-Then verify:
+or locally:
 
 ```bash
-curl http://localhost:4000/api/settings
-curl http://localhost:4000/api/categories
+cd backend
+npx prisma db push --force-reset
 ```
 
-### Frontend cannot reach backend
+### Timezone and daylight saving time
 
-- Check `VITE_API_URL`
-- Ensure backend is running on port `4000`
-- Inspect browser network tab and backend logs
-
-### Import parse fails
-
-- Confirm tabular format and valid `HH:MM` times
-- Confirm German month tokens are valid
-- Check preview error message in course form
-
-### Timezone and daylight saving time (DST)
-
-- Imported appointment times are treated as local wall-clock times (for example, `09:00` stays `09:00` in the app UI).
-- Calendar rendering uses a DST-safe reconstruction so the hour shown in calendar matches the hour shown in the edit form.
-- ICS export is generated with local wall-clock timestamps (without forced `Z` UTC suffix) to avoid unintended hour shifts in calendar clients.
+- Imported appointment times are treated as local wall-clock times.
+- Calendar rendering reconstructs local times from the stored date plus `HH:MM` values.
+- ICS export is generated locally without forcing UTC conversion so calendar clients keep the intended wall-clock hour.
 
 Quick validation:
 
-```bash
-curl -s http://localhost:4000/api/export/ics | head -n 25
-```
+- Export an ICS file from the frontend and inspect the generated file contents.
 
 Expected:
 

@@ -10,30 +10,51 @@ services:
       interval: 3s
       timeout: 3s
       retries: 20
-    ports:
-      - "5432:5432"
+    expose:
+      - "5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      - planner
 
   backend:
     build: ./backend
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-appsecret}@db:5432/${POSTGRES_DB:-stundenplan}
       PORT: 4000
-    ports:
-      - "4000:4000"
+    expose:
+      - "4000"
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - planner
 
   frontend:
     build: ./frontend
     environment:
-      VITE_API_URL: ${VITE_API_URL:-http://localhost:4000/api}
-    ports:
-      - "3000:3000"
+      VITE_API_URL: ${VITE_API_URL:-/api}
+      API_PROXY_TARGET: ${API_PROXY_TARGET:-http://backend:4000}
+    expose:
+      - "3000"
     depends_on:
       - backend
+    networks:
+      - planner
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run --token=${CF_TUNNEL_TOKEN:-}
+    restart: unless-stopped
+    environment:
+      CF_TUNNEL_TOKEN: ${CF_TUNNEL_TOKEN:-}
+    depends_on:
+      - frontend
+    networks:
+      - planner
 
 volumes:
   pgdata:
+
+networks:
+  planner:

@@ -7,52 +7,18 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum AppointmentType {
-  Vorlesung
-  Uebung
-}
+model ShareSnapshot {
+  id               String          @id @default(uuid()) @db.Uuid
+  locatorHash      String          @unique @map("locator_hash") @db.Char(64)
+  ciphertext       String          @db.Text
+  nonce            String          @db.VarChar(64)
+  payloadVersion   String          @map("payload_version") @db.VarChar(20)
+  cryptoVersion    String          @map("crypto_version") @db.VarChar(64)
+  parentSnapshotId String?         @map("parent_snapshot_id") @db.Uuid
+  createdAt        DateTime        @default(now()) @map("created_at")
+  expiresAt        DateTime?       @map("expires_at")
+  parentSnapshot   ShareSnapshot?  @relation("ShareSnapshotLineage", fields: [parentSnapshotId], references: [id], onDelete: SetNull)
+  childSnapshots   ShareSnapshot[] @relation("ShareSnapshotLineage")
 
-model Category {
-  id        String   @id @default(uuid()) @db.Uuid
-  name      String   @unique @db.VarChar(100)
-  color     String   @db.Char(7)
-  createdAt DateTime @default(now()) @map("created_at")
-  courses   Course[]
-
-  @@map("categories")
-}
-
-model Course {
-  id           String        @id @default(uuid()) @db.Uuid
-  name         String        @db.VarChar(255)
-  abbreviation String        @db.VarChar(50)
-  cp           Int
-  categoryId   String?       @map("category_id") @db.Uuid
-  isActive     Boolean       @default(true) @map("is_active")
-  createdAt    DateTime      @default(now()) @map("created_at")
-  category     Category?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  appointments Appointment[]
-
-  @@map("courses")
-}
-
-model Appointment {
-  id        String          @id @default(uuid()) @db.Uuid
-  courseId  String          @map("course_id") @db.Uuid
-  date      DateTime        @db.Date
-  timeFrom  DateTime        @map("time_from") @db.Time(0)
-  timeTo    DateTime        @map("time_to") @db.Time(0)
-  room      String          @db.VarChar(255)
-  type      AppointmentType
-  createdAt DateTime        @default(now()) @map("created_at")
-  course    Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
-
-  @@map("appointments")
-}
-
-model Setting {
-  key   String @id @db.VarChar(100)
-  value String
-
-  @@map("settings")
+  @@map("share_snapshots")
 }
