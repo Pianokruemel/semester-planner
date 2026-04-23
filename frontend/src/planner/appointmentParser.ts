@@ -27,7 +27,7 @@ function parseGermanDate(raw: string, lineNumber: number): { date: string; hasAs
   const match = cleaned.match(/^[^,]+,\s*(\d{1,2})\.\s*([A-Za-zäÄöÖüÜß\.]+)\s+(\d{4})$/);
 
   if (!match) {
-    throw new Error(`Ungueltiges Datumsformat in Zeile ${lineNumber}.`);
+    throw new Error(`Ungültiges Datumsformat in Zeile ${lineNumber}.`);
   }
 
   const day = Number(match[1]);
@@ -48,13 +48,13 @@ function parseGermanDate(raw: string, lineNumber: number): { date: string; hasAs
 function parseTime(raw: string, lineNumber: number): string {
   const match = raw.trim().match(/^(\d{2}):(\d{2})$/);
   if (!match) {
-    throw new Error(`Ungueltige Uhrzeit in Zeile ${lineNumber}.`);
+    throw new Error(`Ungültige Uhrzeit in Zeile ${lineNumber}.`);
   }
 
   const hour = Number(match[1]);
   const minute = Number(match[2]);
   if (hour > 23 || minute > 59) {
-    throw new Error(`Ungueltige Uhrzeit in Zeile ${lineNumber}.`);
+    throw new Error(`Ungültige Uhrzeit in Zeile ${lineNumber}.`);
   }
 
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
@@ -98,14 +98,14 @@ function extractFields(row: TokenizedRow): { dateRaw: string; fromRaw: string; t
     .filter((index) => index >= 0);
 
   if (timeIndexes.length < 2) {
-    throw new Error(`Ungueltige Zeile ${row.lineNumber}: Von/Bis Zeit fehlt.`);
+    throw new Error(`Ungültige Zeile ${row.lineNumber}: Von/Bis Zeit fehlt.`);
   }
 
   const fromIndex = timeIndexes[0] as number;
   const toIndex = timeIndexes[1] as number;
 
   if (toIndex <= fromIndex) {
-    throw new Error(`Ungueltige Zeile ${row.lineNumber}: Von/Bis Zeitreihenfolge ungueltig.`);
+    throw new Error(`Ungültige Zeile ${row.lineNumber}: Von/Bis Zeitreihenfolge ungültig.`);
   }
 
   const hasIndexColumn = fromIndex >= 2 && /^\d+$/.test(row.columns[0] ?? "");
@@ -115,11 +115,11 @@ function extractFields(row: TokenizedRow): { dateRaw: string; fromRaw: string; t
   const roomRaw = row.columns[toIndex + 1] ?? "";
 
   if (!dateRaw) {
-    throw new Error(`Ungueltige Zeile ${row.lineNumber}: Datum fehlt.`);
+    throw new Error(`Ungültige Zeile ${row.lineNumber}: Datum fehlt.`);
   }
 
   if (!roomRaw) {
-    throw new Error(`Ungueltige Zeile ${row.lineNumber}: Raum fehlt.`);
+    throw new Error(`Ungültige Zeile ${row.lineNumber}: Raum fehlt.`);
   }
 
   return { dateRaw, fromRaw, toRaw, roomRaw };

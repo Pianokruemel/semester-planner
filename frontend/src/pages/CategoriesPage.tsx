@@ -44,20 +44,20 @@ export function CategoriesPage() {
       if (error instanceof CategoryInUseError) {
         const message = error.message;
         const list = error.affectedCourses.join(", ");
-        const confirmText = list ? `${message}\nBetroffene Kurse: ${list}\nTrotzdem loeschen?` : `${message}\nTrotzdem loeschen?`;
+        const confirmText = list ? `${message}\nBetroffene Kurse: ${list}\nTrotzdem löschen?` : `${message}\nTrotzdem löschen?`;
         const confirmed = window.confirm(confirmText);
 
         if (confirmed) {
           try {
             await deleteCategory.mutateAsync({ id, confirm: true });
           } catch (confirmError) {
-            setErrorText(confirmError instanceof Error ? confirmError.message : "Loeschen fehlgeschlagen.");
+            setErrorText(confirmError instanceof Error ? confirmError.message : "Löschen fehlgeschlagen.");
           }
         }
         return;
       }
 
-      setErrorText(error instanceof Error ? error.message : "Loeschen fehlgeschlagen.");
+      setErrorText(error instanceof Error ? error.message : "Löschen fehlgeschlagen.");
     }
   }
 
@@ -109,7 +109,7 @@ export function CategoriesPage() {
                 Bearbeiten
               </button>
               <button type="button" className="danger-btn" onClick={() => void onDelete(category.id)} disabled={isBusy}>
-                {isDeleting ? "Loeschen..." : "Loeschen"}
+                {isDeleting ? "Löschen..." : "Löschen"}
               </button>
             </div>
           </li>

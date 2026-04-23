@@ -119,6 +119,10 @@ export const defaultUiPreferences: UiPreferences = {
 
 export const defaultSettings = defaultUiPreferences;
 
+export function formatAppointmentType(type: AppointmentType): string {
+  return type === "Uebung" ? "Übung" : "Vorlesung";
+}
+
 type UnknownRecord = Record<string, unknown>;
 
 function isRecord(value: unknown): value is UnknownRecord {
@@ -127,19 +131,19 @@ function isRecord(value: unknown): value is UnknownRecord {
 
 function normalizeCategory(input: unknown, index: number): SnapshotCategory {
   if (!isRecord(input)) {
-    throw new Error(`Kategorie ${index + 1} ist ungueltig.`);
+    throw new Error(`Kategorie ${index + 1} ist ungültig.`);
   }
 
   if (typeof input.id !== "string" || input.id.trim().length === 0) {
-    throw new Error(`Kategorie ${index + 1} hat keine gueltige ID.`);
+    throw new Error(`Kategorie ${index + 1} hat keine gültige ID.`);
   }
 
   if (typeof input.name !== "string" || input.name.trim().length === 0) {
-    throw new Error(`Kategorie ${index + 1} hat keinen gueltigen Namen.`);
+    throw new Error(`Kategorie ${index + 1} hat keinen gültigen Namen.`);
   }
 
   if (typeof input.color !== "string" || !/^#[0-9A-Fa-f]{6}$/.test(input.color)) {
-    throw new Error(`Kategorie ${index + 1} hat keine gueltige Farbe.`);
+    throw new Error(`Kategorie ${index + 1} hat keine gültige Farbe.`);
   }
 
   return {
@@ -151,27 +155,27 @@ function normalizeCategory(input: unknown, index: number): SnapshotCategory {
 
 function normalizeAppointment(input: unknown, index: number): SnapshotAppointment {
   if (!isRecord(input)) {
-    throw new Error(`Termin ${index + 1} ist ungueltig.`);
+    throw new Error(`Termin ${index + 1} ist ungültig.`);
   }
 
   if (typeof input.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(input.date)) {
-    throw new Error(`Termin ${index + 1} hat kein gueltiges Datum.`);
+    throw new Error(`Termin ${index + 1} hat kein gültiges Datum.`);
   }
 
   if (typeof input.time_from !== "string" || !/^\d{2}:\d{2}$/.test(input.time_from)) {
-    throw new Error(`Termin ${index + 1} hat keine gueltige Startzeit.`);
+    throw new Error(`Termin ${index + 1} hat keine gültige Startzeit.`);
   }
 
   if (typeof input.time_to !== "string" || !/^\d{2}:\d{2}$/.test(input.time_to)) {
-    throw new Error(`Termin ${index + 1} hat keine gueltige Endzeit.`);
+    throw new Error(`Termin ${index + 1} hat keine gültige Endzeit.`);
   }
 
   if (typeof input.room !== "string") {
-    throw new Error(`Termin ${index + 1} hat keinen gueltigen Raum.`);
+    throw new Error(`Termin ${index + 1} hat keinen gültigen Raum.`);
   }
 
   if (input.type !== "Vorlesung" && input.type !== "Uebung") {
-    throw new Error(`Termin ${index + 1} hat keinen gueltigen Typ.`);
+    throw new Error(`Termin ${index + 1} hat keinen gültigen Typ.`);
   }
 
   return {
@@ -185,24 +189,24 @@ function normalizeAppointment(input: unknown, index: number): SnapshotAppointmen
 
 function normalizeCourse(input: unknown, index: number, categoryIds: Set<string>): SnapshotCourse {
   if (!isRecord(input)) {
-    throw new Error(`Kurs ${index + 1} ist ungueltig.`);
+    throw new Error(`Kurs ${index + 1} ist ungültig.`);
   }
 
   if (typeof input.id !== "string" || input.id.trim().length === 0) {
-    throw new Error(`Kurs ${index + 1} hat keine gueltige ID.`);
+    throw new Error(`Kurs ${index + 1} hat keine gültige ID.`);
   }
 
   if (typeof input.name !== "string" || input.name.trim().length === 0) {
-    throw new Error(`Kurs ${index + 1} hat keinen gueltigen Namen.`);
+    throw new Error(`Kurs ${index + 1} hat keinen gültigen Namen.`);
   }
 
   if (typeof input.abbreviation !== "string" || input.abbreviation.trim().length === 0) {
-    throw new Error(`Kurs ${index + 1} hat keine gueltige Abkuerzung.`);
+    throw new Error(`Kurs ${index + 1} hat keine gültige Abkürzung.`);
   }
 
   const cp = Number(input.cp);
   if (!Number.isInteger(cp) || cp <= 0) {
-    throw new Error(`Kurs ${index + 1} hat keine gueltigen CP.`);
+    throw new Error(`Kurs ${index + 1} hat keine gültigen CP.`);
   }
 
   const categoryId = typeof input.category_id === "string" && categoryIds.has(input.category_id) ? input.category_id : null;

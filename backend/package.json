@@ -7,7 +7,7 @@
     "test": "node -e \"console.log('No automated backend tests configured yet.')\"",
     "lint": "tsc --noEmit -p tsconfig.json",
     "dev": "tsx watch src/index.ts",
-    "docker:dev": "prisma db push && npm run seed && npm run dev",
+    "docker:dev": "node scripts/dockerDev.js",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "prisma:generate": "prisma generate",

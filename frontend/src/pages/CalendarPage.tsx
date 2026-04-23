@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Calendar, View, Views, dayjsLocalizer } from "react-big-calendar";
 import "react-big-calendar/lib/css/react-big-calendar.css";
-import { AppointmentType } from "../api/types";
+import { AppointmentType, formatAppointmentType } from "../api/types";
 import { useCourses, useToggleCourse } from "../hooks/useCourses";
 import { useSettings, useUpdateSettings } from "../hooks/useSettings";
 import { ExportAppointment, buildIcs } from "../planner/icsExporter";
@@ -194,7 +194,7 @@ export function CalendarPage({ showFullName }: Props) {
             const details = [
               showTime ? `${fromText}-${toText}` : "",
               showRoom ? appointment.room : "",
-              showType ? appointment.type : ""
+              showType ? formatAppointmentType(appointment.type) : ""
             ]
               .filter(Boolean)
               .join(" | ");
@@ -266,7 +266,7 @@ export function CalendarPage({ showFullName }: Props) {
         );
 
       if (appointments.length === 0) {
-        throw new Error("Keine Termine fuer den Export gefunden.");
+        throw new Error("Keine Termine für den Export gefunden.");
       }
 
       const blob = new Blob([buildIcs(appointments, showFullName)], { type: "text/calendar;charset=utf-8" });
@@ -304,7 +304,7 @@ export function CalendarPage({ showFullName }: Props) {
         <div className="sidebar-top">
           <h2>Filter</h2>
           <button type="button" className="close-sidebar" onClick={() => setIsFilterOpen(false)}>
-            Schliessen
+            Schließen
           </button>
         </div>
 
@@ -356,7 +356,7 @@ export function CalendarPage({ showFullName }: Props) {
                   );
                 }}
               />
-              <span>{type} ausblenden</span>
+              <span>{formatAppointmentType(type)} ausblenden</span>
             </label>
           ))}
         </div>
@@ -403,7 +403,7 @@ export function CalendarPage({ showFullName }: Props) {
                 setShowTotalCp(true);
               }}
             >
-              Filter zuruecksetzen
+              Filter zurücksetzen
             </button>
           </div>
         </div>
@@ -426,7 +426,7 @@ export function CalendarPage({ showFullName }: Props) {
             <button type="button" className="toggle-chip" onClick={() => setIsFilterOpen(true)}>
               Filter
             </button>
-            <button type="button" onClick={() => navigateCalendar("prev")}>Zurueck</button>
+            <button type="button" onClick={() => navigateCalendar("prev")}>Zurück</button>
             <button type="button" onClick={() => navigateCalendar("today")}>Heute</button>
             <button type="button" onClick={() => navigateCalendar("next")}>Weiter</button>
             <span className="calendar-range-label">{visibleRangeLabel}</span>

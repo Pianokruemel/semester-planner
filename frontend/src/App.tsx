@@ -138,7 +138,7 @@ function App() {
       return true;
     }
 
-    return window.confirm("Lokale Aenderungen gehen verloren. Fortfahren?");
+    return window.confirm("Lokale Änderungen gehen verloren. Fortfahren?");
   }
 
   function handleNewPlanner() {
@@ -187,7 +187,7 @@ function App() {
       const result = await createShare();
       showShareResult({
         title: "Link erstellt",
-        description: "Der aktuelle Stand ist jetzt als verschluesselter Link gespeichert. Bewahre den Acht-Wort-Code gut auf.",
+        description: "Der aktuelle Stand ist jetzt als verschlüsselter Link gespeichert. Bewahre den Acht-Wort-Code gut auf.",
         code: result.code
       });
     } catch (error) {
@@ -207,7 +207,7 @@ function App() {
       const result = await extendShare();
       showShareResult({
         title: "Link aktualisiert",
-        description: "Der neue Link zeigt auf den aktuellen Stand. Aeltere Links bleiben beim vorherigen Snapshot gueltig.",
+        description: "Der neue Link zeigt auf den aktuellen Stand. Ältere Links bleiben beim vorherigen Snapshot gültig.",
         code: result.code
       });
     } catch (error) {
@@ -282,7 +282,7 @@ function App() {
           </div>
           {withCloseButton ? (
             <button type="button" onClick={resetShareUi} disabled={isShareBusy}>
-              Schliessen
+              Schließen
             </button>
           ) : null}
         </div>
@@ -329,17 +329,17 @@ function App() {
             <p className="page-intro">Erstelle einen direkten Link für den aktuellen Stand. Beim Aktualisieren bleibt der alte Link beim alten Snapshot gültig.</p>
           </div>
           <button type="button" onClick={resetShareUi} disabled={isShareBusy}>
-            Schliessen
+            Schließen
           </button>
         </div>
         <div className="entry-notes share-panel-notes">
           <article className="entry-note">
             <strong>Was geteilt wird</strong>
-            <p>Kategorien, Kurse, Termine und aktive Kurse werden im Snapshot verschluesselt gespeichert.</p>
+            <p>Kategorien, Kurse, Termine und aktive Kurse werden im Snapshot verschlüsselt gespeichert.</p>
           </article>
           <article className="entry-note">
             <strong>Was lokal bleibt</strong>
-            <p>Dark Mode, Filter und Namensanzeige bleiben nur auf diesem Geraet.</p>
+            <p>Dark Mode, Filter und Namensanzeige bleiben nur auf diesem Gerät.</p>
           </article>
         </div>
         {shareError ? <p className="error-text">{shareError}</p> : null}
@@ -373,7 +373,7 @@ function App() {
             <p className="page-intro">{shareResult.description}</p>
           </div>
           <button type="button" onClick={resetShareUi} disabled={isShareBusy}>
-            Schliessen
+            Schließen
           </button>
         </div>
         <div className="share-copy-grid">
@@ -405,7 +405,7 @@ function App() {
         </div>
         {isQrVisible ? (
           <div className="share-qr-block">
-            <div className="share-qr-card" aria-label="QR-Code fuer den geteilten Link">
+            <div className="share-qr-card" aria-label="QR-Code für den geteilten Link">
               <QRCodeSVG value={shareResult.shareUrl} size={192} includeMargin />
             </div>
             <p className="share-qr-hint">Scanne den QR-Code, um den Link direkt mit dem eingebetteten Acht-Wort-Code zu öffnen.</p>
@@ -443,7 +443,7 @@ function App() {
           </div>
 
           <div className="entry-utility-row">
-            <p>Darstellung und Filter bleiben immer auf diesem Geraet.</p>
+            <p>Darstellung und Filter bleiben immer auf diesem Gerät.</p>
             <button type="button" className="utility-btn" onClick={toggleTheme}>
               {mergedSettings.dark_mode ? "Hell" : "Dunkel"}
             </button>
@@ -461,7 +461,7 @@ function App() {
               <p>Es wird ein verschlüsselter Snapshot erzeugt, den nur der Link oder der Acht-Wort-Code wieder öffnen kann.</p>
             </article>
             <article className="entry-note">
-              <strong>Nur auf diesem Geraet</strong>
+              <strong>Nur auf diesem Gerät</strong>
               <p>Dark Mode, Filter und die Anzeige voller Kursnamen bleiben privat und werden nicht mitgeschickt.</p>
             </article>
           </div>

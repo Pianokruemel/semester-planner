@@ -155,6 +155,8 @@ Full reset, including snapshot storage:
 docker compose down -v
 ```
 
+If you change `POSTGRES_USER` or `POSTGRES_PASSWORD`, run the full reset first. PostgreSQL only applies those credentials when the `pgdata` volume is initialized, so an existing volume can keep the old password even after Compose env values change.
+
 ## Local Development
 
 ### Backend
@@ -188,6 +190,7 @@ Frontend runs on `http://localhost:3000`.
 - `POSTGRES_DB` default: `stundenplan`
 - `POSTGRES_USER` default: `app`
 - `POSTGRES_PASSWORD` default: `appsecret`
+- Backend Docker startup assembles `DATABASE_URL` from those values at runtime, so passwords with URL-reserved characters like `@` or `:` stay valid for Prisma.
 - `VITE_API_URL` default: `/api`
 - `API_PROXY_TARGET` default: `http://backend:4000`
 - `ALLOWED_HOSTS` default: `semesti.plani.dev` (comma-separated Vite dev-server host allowlist for tunnel or reverse-proxy domains)

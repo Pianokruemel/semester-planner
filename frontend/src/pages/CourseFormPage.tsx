@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { formatAppointmentType } from "../api/types";
 import { useCategories } from "../hooks/useCategories";
 import { useCourses } from "../hooks/useCourses";
 import { useCreateCourse, useDeleteCourse, useUpdateCourse } from "../hooks/useCourseMutations";
@@ -115,7 +116,7 @@ export function CourseFormPage({ mode }: Props) {
       return;
     }
 
-    const ok = window.confirm("Kurs wirklich loeschen? Alle zugehoerigen Termine werden entfernt.");
+    const ok = window.confirm("Kurs wirklich löschen? Alle zugehörigen Termine werden entfernt.");
     if (!ok) {
       return;
     }
@@ -124,7 +125,7 @@ export function CourseFormPage({ mode }: Props) {
       await deleteCourse.mutateAsync(id);
       navigate("/");
     } catch (error) {
-      setErrorText(error instanceof Error ? error.message : "Loeschen fehlgeschlagen.");
+      setErrorText(error instanceof Error ? error.message : "Löschen fehlgeschlagen.");
     }
   }
 
@@ -154,14 +155,14 @@ export function CourseFormPage({ mode }: Props) {
   return (
     <section className="page-card">
       <h2>{mode === "create" ? "Kurs erstellen" : "Kurs bearbeiten"}</h2>
-      <p className="page-intro">Fuelle Kursdaten aus und fuege den tabellarischen TUCaN-Export direkt ein.</p>
+      <p className="page-intro">Fülle Kursdaten aus und füge den tabellarischen TUCaN-Export direkt ein.</p>
       <form className="form-grid" onSubmit={onSubmit}>
         <label>
           Kursname
           <input value={name} onChange={(event) => setName(event.target.value)} required disabled={isBusy} />
         </label>
         <label>
-          Abkuerzung
+          Abkürzung
           <input
             value={abbreviation}
             onChange={(event) => setAbbreviation(event.target.value.slice(0, 15))}
@@ -200,7 +201,7 @@ export function CourseFormPage({ mode }: Props) {
             value={appointmentsRaw}
             onChange={(event) => setAppointmentsRaw(event.target.value)}
             rows={14}
-            placeholder="Tabellarischen TUCaN-Export einfuegen: Nr, Datum, Von, Bis, Raum, Lehrende"
+            placeholder="Tabellarischen TUCaN-Export einfügen: Nr, Datum, Von, Bis, Raum, Lehrende"
             disabled={isBusy}
           />
         </label>
@@ -211,7 +212,7 @@ export function CourseFormPage({ mode }: Props) {
             <span>
               Zeitraum: {preview.date_from ?? "-"} bis {preview.date_to ?? "-"}
             </span>
-            <span>Typen: {preview.types.length > 0 ? preview.types.join(", ") : "-"}</span>
+            <span>Typen: {preview.types.length > 0 ? preview.types.map(formatAppointmentType).join(", ") : "-"}</span>
           </div>
         ) : null}
 
@@ -228,7 +229,7 @@ export function CourseFormPage({ mode }: Props) {
           </button>
           {mode === "edit" ? (
             <button type="button" className="danger-btn" onClick={onDelete} disabled={isBusy}>
-              {isDeleting ? "Loeschen..." : "Kurs loeschen"}
+              {isDeleting ? "Löschen..." : "Kurs löschen"}
             </button>
           ) : null}
         </div>

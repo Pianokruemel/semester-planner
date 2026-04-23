@@ -78,11 +78,11 @@ export function normalizeShareCode(rawCode: string): string {
     .filter((value) => value.length > 0);
 
   if (words.length !== wordCount) {
-    throw new Error("Bitte genau acht Woerter eingeben.");
+    throw new Error("Bitte genau acht Wörter eingeben.");
   }
 
   if (!words.every((word) => wordSet.has(word))) {
-    throw new Error("Der Code enthaelt ungueltige Woerter.");
+    throw new Error("Der Code enthält ungültige Wörter.");
   }
 
   return words.join(" ");
@@ -124,7 +124,7 @@ export async function decryptPlannerSnapshot(envelope: ShareEnvelope, code: stri
   }
 
   if (envelope.crypto_version !== shareCryptoVersion) {
-    throw new Error("Unbekannte Verschluesselungsversion.");
+    throw new Error("Unbekannte Verschlüsselungsversion.");
   }
 
   try {

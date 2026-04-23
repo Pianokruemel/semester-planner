@@ -114,11 +114,11 @@ function ensureCoursePayload(session: PlannerSession, payload: CourseMutationInp
   }
 
   if (!abbreviation) {
-    throw new Error("Abkuerzung darf nicht leer sein.");
+    throw new Error("Abkürzung darf nicht leer sein.");
   }
 
   if (!Number.isInteger(payload.cp) || payload.cp <= 0) {
-    throw new Error("CP muessen eine positive ganze Zahl sein.");
+    throw new Error("CP müssen eine positive ganze Zahl sein.");
   }
 
   if (payload.category_id && !session.snapshot.categories.some((category) => category.id === payload.category_id)) {
