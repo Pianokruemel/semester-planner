@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { defaultUiPreferences, formatAppointmentType, type SnapshotAppointment } from "../api/types";
+import { defaultUiPreferences, formatAppointmentType } from "../api/types";
 import { useCategories } from "../hooks/useCategories";
 import { useCourses } from "../hooks/useCourses";
 import { useUpdateSettings } from "../hooks/useSettings";
@@ -10,14 +10,6 @@ import { formatAppointmentsForTextarea, summarizeAppointments } from "../planner
 type Props = {
   mode: "create" | "edit";
 };
-
-type CalendarNavigationState = {
-  focusDate: string;
-};
-
-function getEarliestAppointmentDate(appointments: SnapshotAppointment[]): string | null {
-  return appointments.map((appointment) => appointment.date).sort((left, right) => left.localeCompare(right))[0] ?? null;
-}
 
 export function CourseFormPage({ mode }: Props) {
   const navigate = useNavigate();
@@ -96,10 +88,8 @@ export function CourseFormPage({ mode }: Props) {
     }
 
     try {
-      let focusDate: string | null = null;
-
       if (mode === "create") {
-        const createdCourse = await createCourse.mutateAsync({
+        await createCourse.mutateAsync({
           name,
           abbreviation,
           cp,
@@ -109,9 +99,8 @@ export function CourseFormPage({ mode }: Props) {
         await updateSettings.mutateAsync({
           active_filters: defaultUiPreferences.active_filters
         });
-        focusDate = getEarliestAppointmentDate(createdCourse.appointments);
       } else if (id) {
-        const updatedCourse = await updateCourse.mutateAsync({
+        await updateCourse.mutateAsync({
           id,
           name,
           abbreviation,
@@ -119,12 +108,6 @@ export function CourseFormPage({ mode }: Props) {
           category_id: categoryId || null,
           appointments_raw: appointmentsRaw
         });
-        focusDate = getEarliestAppointmentDate(updatedCourse.appointments);
-      }
-
-      if (focusDate) {
-        navigate("/", { state: { focusDate } satisfies CalendarNavigationState });
-        return;
       }
 
       navigate("/");

@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import App from "./App";
@@ -79,30 +79,6 @@ describe("persisted session hydration routing", () => {
     expect(screen.queryByRole("heading", { name: "Stundenplan ohne Server-Klartext" })).not.toBeInTheDocument();
   });
 
-  it("focuses the calendar on the first appointment after creating a course", async () => {
-    const snapshot: PlannerSnapshot = {
-      export_version: plannerSnapshotVersion,
-      settings: {},
-      categories: [],
-      courses: []
-    };
-
-    renderHydratedRoute("/courses/new", snapshot);
-
-    fireEvent.change(screen.getByLabelText("Kursname"), { target: { value: "Analysis 1" } });
-    fireEvent.change(screen.getByLabelText("Abkürzung"), { target: { value: "AN1" } });
-    fireEvent.change(screen.getByLabelText("Termine (TUCaN-Format)"), {
-      target: {
-        value: "1\tMo, 27. Apr. 2026\t08:55\t10:35\tS311/08\tDozent"
-      }
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Speichern" }));
-
-    expect(await screen.findByText("26.04. - 02.05.2026")).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "Analysis 1" })).toBeChecked();
-  });
-
   it("resets local filters after creating a course", async () => {
     const snapshot: PlannerSnapshot = {
       export_version: plannerSnapshotVersion,
@@ -141,8 +117,7 @@ describe("persisted session hydration routing", () => {
 
     expect(await screen.findByRole("checkbox", { name: "Vorlesung ausblenden" })).not.toBeChecked();
     expect(screen.getByRole("checkbox", { name: "6 CP" })).not.toBeChecked();
-    expect(screen.getByText("26.04. - 02.05.2026")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /AN1 - 08:55-10:35 \| S311\/08 \| Vorlesung/ })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Analysis 1" })).toBeChecked();
 
     expect(JSON.parse(window.localStorage.getItem(uiPreferencesStorageKey) || "null")).toEqual(defaultUiPreferences);
   });
