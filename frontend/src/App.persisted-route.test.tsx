@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
-import { beforeEach, describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import App from "./App";
 import { plannerSnapshotFingerprint, plannerSnapshotVersion, type PlannerSnapshot } from "./api/types";
@@ -31,6 +31,10 @@ function renderHydratedRoute(initialEntry: string, snapshot: PlannerSnapshot) {
 describe("persisted session hydration routing", () => {
   beforeEach(() => {
     window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    cleanup();
   });
 
   it("renders the course edit route directly from a persisted draft", async () => {
@@ -72,5 +76,29 @@ describe("persisted session hydration routing", () => {
     expect(screen.getByDisplayValue("IT-Sicherheit Vertiefung")).toBeInTheDocument();
     expect(screen.getByDisplayValue("ITS")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Stundenplan ohne Server-Klartext" })).not.toBeInTheDocument();
+  });
+
+  it("focuses the calendar on the first appointment after creating a course", async () => {
+    const snapshot: PlannerSnapshot = {
+      export_version: plannerSnapshotVersion,
+      settings: {},
+      categories: [],
+      courses: []
+    };
+
+    renderHydratedRoute("/courses/new", snapshot);
+
+    fireEvent.change(screen.getByLabelText("Kursname"), { target: { value: "Analysis 1" } });
+    fireEvent.change(screen.getByLabelText("Abkürzung"), { target: { value: "AN1" } });
+    fireEvent.change(screen.getByLabelText("Termine (TUCaN-Format)"), {
+      target: {
+        value: "1\tMo, 27. Apr. 2026\t08:55\t10:35\tS311/08\tDozent"
+      }
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Speichern" }));
+
+    expect(await screen.findByText("26.04. - 02.05.2026")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Analysis 1" })).toBeChecked();
   });
 });

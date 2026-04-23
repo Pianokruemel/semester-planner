@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { formatAppointmentType } from "../api/types";
+import { formatAppointmentType, type SnapshotAppointment } from "../api/types";
 import { useCategories } from "../hooks/useCategories";
 import { useCourses } from "../hooks/useCourses";
 import { useCreateCourse, useDeleteCourse, useUpdateCourse } from "../hooks/useCourseMutations";
@@ -9,6 +9,14 @@ import { formatAppointmentsForTextarea, summarizeAppointments } from "../planner
 type Props = {
   mode: "create" | "edit";
 };
+
+type CalendarNavigationState = {
+  focusDate: string;
+};
+
+function getEarliestAppointmentDate(appointments: SnapshotAppointment[]): string | null {
+  return appointments.map((appointment) => appointment.date).sort((left, right) => left.localeCompare(right))[0] ?? null;
+}
 
 export function CourseFormPage({ mode }: Props) {
   const navigate = useNavigate();
@@ -86,16 +94,19 @@ export function CourseFormPage({ mode }: Props) {
     }
 
     try {
+      let focusDate: string | null = null;
+
       if (mode === "create") {
-        await createCourse.mutateAsync({
+        const createdCourse = await createCourse.mutateAsync({
           name,
           abbreviation,
           cp,
           category_id: categoryId || null,
           appointments_raw: appointmentsRaw
         });
+        focusDate = getEarliestAppointmentDate(createdCourse.appointments);
       } else if (id) {
-        await updateCourse.mutateAsync({
+        const updatedCourse = await updateCourse.mutateAsync({
           id,
           name,
           abbreviation,
@@ -103,6 +114,12 @@ export function CourseFormPage({ mode }: Props) {
           category_id: categoryId || null,
           appointments_raw: appointmentsRaw
         });
+        focusDate = getEarliestAppointmentDate(updatedCourse.appointments);
+      }
+
+      if (focusDate) {
+        navigate("/", { state: { focusDate } satisfies CalendarNavigationState });
+        return;
       }
 
       navigate("/");

@@ -1,6 +1,6 @@
 import dayjs from "dayjs";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Calendar, View, Views, dayjsLocalizer } from "react-big-calendar";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import { AppointmentType, formatAppointmentType } from "../api/types";
@@ -25,6 +25,10 @@ type CalendarEvent = {
   type: AppointmentType;
 };
 
+type CalendarNavigationState = {
+  focusDate?: unknown;
+};
+
 function parseLocalDateParts(date: string) {
   const [year, month, day] = date.split("-").map(Number);
 
@@ -45,7 +49,28 @@ function parseLocalTimeParts(time: string) {
   return { hour, minute };
 }
 
+function readFocusedCalendarDate(state: unknown): Date | null {
+  if (typeof state !== "object" || state === null || Array.isArray(state)) {
+    return null;
+  }
+
+  const focusDate = (state as CalendarNavigationState).focusDate;
+
+  if (typeof focusDate !== "string") {
+    return null;
+  }
+
+  const parts = parseLocalDateParts(focusDate);
+
+  if (!parts) {
+    return null;
+  }
+
+  return new Date(parts.year, parts.month, parts.day, 12, 0, 0, 0);
+}
+
 export function CalendarPage({ showFullName }: Props) {
+  const location = useLocation();
   const navigate = useNavigate();
   const { data: courses = [], isLoading } = useCourses();
   const toggleCourse = useToggleCourse();
@@ -58,7 +83,7 @@ export function CalendarPage({ showFullName }: Props) {
   const [showTime, setShowTime] = useState(true);
   const [showTotalCp, setShowTotalCp] = useState(true);
   const [view, setView] = useState<"week" | "day" | "month">("week");
-  const [currentDate, setCurrentDate] = useState<Date>(new Date());
+  const [currentDate, setCurrentDate] = useState<Date>(() => readFocusedCalendarDate(location.state) ?? new Date());
   const [actionStatus, setActionStatus] = useState("");
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const hasHydratedFilters = useRef(false);
