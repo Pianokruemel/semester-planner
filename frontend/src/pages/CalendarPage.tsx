@@ -1,13 +1,12 @@
 import dayjs from "dayjs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
 import { Calendar, View, Views, dayjsLocalizer } from "react-big-calendar";
 import "react-big-calendar/lib/css/react-big-calendar.css";
-import { apiClient } from "../api/client";
 import { AppointmentType } from "../api/types";
 import { useCourses, useToggleCourse } from "../hooks/useCourses";
 import { useSettings, useUpdateSettings } from "../hooks/useSettings";
+import { ExportAppointment, buildIcs } from "../planner/icsExporter";
 
 const localizer = dayjsLocalizer(dayjs);
 
@@ -26,9 +25,28 @@ type CalendarEvent = {
   type: AppointmentType;
 };
 
+function parseLocalDateParts(date: string) {
+  const [year, month, day] = date.split("-").map(Number);
+
+  if (!year || !month || !day) {
+    return null;
+  }
+
+  return { year, month: month - 1, day };
+}
+
+function parseLocalTimeParts(time: string) {
+  const [hour, minute] = time.split(":").map(Number);
+
+  if (!Number.isInteger(hour) || !Number.isInteger(minute)) {
+    return null;
+  }
+
+  return { hour, minute };
+}
+
 export function CalendarPage({ showFullName }: Props) {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const { data: courses = [], isLoading } = useCourses();
   const toggleCourse = useToggleCourse();
   const { data: settings } = useSettings();
@@ -45,6 +63,7 @@ export function CalendarPage({ showFullName }: Props) {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const hasHydratedFilters = useRef(false);
   const lastSavedFiltersKey = useRef("");
+  const showFullNameSetting = settings?.show_full_name === true;
 
   useEffect(() => {
     if (!isFilterOpen) {
@@ -141,31 +160,35 @@ export function CalendarPage({ showFullName }: Props) {
         course.appointments
           .filter((appointment) => !hideTypes.includes(appointment.type))
           .map((appointment) => {
-            const appointmentDate = new Date(appointment.date);
-            const from = new Date(appointment.timeFrom);
-            const to = new Date(appointment.timeTo);
+            const appointmentDate = parseLocalDateParts(appointment.date);
+            const from = parseLocalTimeParts(appointment.timeFrom);
+            const to = parseLocalTimeParts(appointment.timeTo);
+
+            if (!appointmentDate || !from || !to) {
+              return null;
+            }
 
             const start = new Date(
-              appointmentDate.getUTCFullYear(),
-              appointmentDate.getUTCMonth(),
-              appointmentDate.getUTCDate(),
-              from.getUTCHours(),
-              from.getUTCMinutes(),
+              appointmentDate.year,
+              appointmentDate.month,
+              appointmentDate.day,
+              from.hour,
+              from.minute,
               0,
               0
             );
             const end = new Date(
-              appointmentDate.getUTCFullYear(),
-              appointmentDate.getUTCMonth(),
-              appointmentDate.getUTCDate(),
-              to.getUTCHours(),
-              to.getUTCMinutes(),
+              appointmentDate.year,
+              appointmentDate.month,
+              appointmentDate.day,
+              to.hour,
+              to.minute,
               0,
               0
             );
 
-            const fromText = `${String(from.getUTCHours()).padStart(2, "0")}:${String(from.getUTCMinutes()).padStart(2, "0")}`;
-            const toText = `${String(to.getUTCHours()).padStart(2, "0")}:${String(to.getUTCMinutes()).padStart(2, "0")}`;
+            const fromText = `${String(from.hour).padStart(2, "0")}:${String(from.minute).padStart(2, "0")}`;
+            const toText = `${String(to.hour).padStart(2, "0")}:${String(to.minute).padStart(2, "0")}`;
 
             const label = showFullName ? course.name : course.abbreviation;
             const details = [
@@ -187,6 +210,7 @@ export function CalendarPage({ showFullName }: Props) {
               type: appointment.type
             } satisfies CalendarEvent;
           })
+          .filter((event): event is CalendarEvent => event !== null)
       );
   }, [courses, hideTypes, selectedCps, showFullName, showRoom, showTime, showType]);
 
@@ -222,27 +246,30 @@ export function CalendarPage({ showFullName }: Props) {
   async function exportIcs() {
     setActionStatus("");
     try {
-      const params = new URLSearchParams();
-      if (selectedCps.length > 0) {
-        params.set("cp", selectedCps.join(","));
+      const appointments: ExportAppointment[] = courses
+        .filter((course) => course.isActive)
+        .filter((course) => selectedCps.length === 0 || selectedCps.includes(course.cp))
+        .flatMap((course) =>
+          course.appointments
+            .filter((appointment) => !hideTypes.includes(appointment.type))
+            .map((appointment) => ({
+              id: appointment.id,
+              courseName: course.name,
+              courseAbbreviation: course.abbreviation,
+              cp: course.cp,
+              categoryName: course.category?.name ?? null,
+              date: appointment.date,
+              timeFrom: appointment.timeFrom,
+              timeTo: appointment.timeTo,
+              room: appointment.room
+            }))
+        );
+
+      if (appointments.length === 0) {
+        throw new Error("Keine Termine fuer den Export gefunden.");
       }
 
-      const selectedTypes = (["Vorlesung", "Uebung"] as AppointmentType[]).filter(
-        (type) => !hideTypes.includes(type)
-      );
-      if (selectedTypes.length > 0 && selectedTypes.length < 2) {
-        params.set("types", selectedTypes.join(","));
-      }
-
-      const activeCourseIds = courses.filter((course) => course.isActive).map((course) => course.id);
-      if (activeCourseIds.length > 0) {
-        params.set("courses", activeCourseIds.join(","));
-      }
-
-      const response = await apiClient.get(`/export/ics?${params.toString()}`, {
-        responseType: "blob"
-      });
-      const blob = new Blob([response.data], { type: "text/calendar;charset=utf-8" });
+      const blob = new Blob([buildIcs(appointments, showFullName)], { type: "text/calendar;charset=utf-8" });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -250,51 +277,8 @@ export function CalendarPage({ showFullName }: Props) {
       link.click();
       window.URL.revokeObjectURL(url);
       setActionStatus("ICS Export erstellt.");
-    } catch {
-      setActionStatus("ICS Export fehlgeschlagen.");
-    }
-  }
-
-  async function exportJson() {
-    setActionStatus("");
-    try {
-      const response = await apiClient.get("/export/json");
-      const blob = new Blob([JSON.stringify(response.data, null, 2)], { type: "application/json" });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "stundenplan-export.json";
-      link.click();
-      window.URL.revokeObjectURL(url);
-      setActionStatus("JSON Export erstellt.");
-    } catch {
-      setActionStatus("JSON Export fehlgeschlagen.");
-    }
-  }
-
-  async function importJson(file: File | null) {
-    if (!file) {
-      return;
-    }
-
-    const confirmed = window.confirm("Alle vorhandenen Daten werden ersetzt. Import fortsetzen?");
-    if (!confirmed) {
-      return;
-    }
-
-    setActionStatus("");
-    try {
-      const text = await file.text();
-      const payload = JSON.parse(text);
-      await apiClient.post("/import/json", payload);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["courses"] }),
-        queryClient.invalidateQueries({ queryKey: ["categories"] }),
-        queryClient.invalidateQueries({ queryKey: ["settings"] })
-      ]);
-      setActionStatus("Import erfolgreich.");
-    } catch {
-      setActionStatus("Import fehlgeschlagen.");
+    } catch (error) {
+      setActionStatus(error instanceof Error ? error.message : "ICS Export fehlgeschlagen.");
     }
   }
 
@@ -380,6 +364,18 @@ export function CalendarPage({ showFullName }: Props) {
         <div className="filter-group">
           <h3>Anzeige</h3>
           <label className="check-row">
+            <input
+              type="checkbox"
+              checked={showFullNameSetting}
+              onChange={() =>
+                patchSettings({
+                  show_full_name: !showFullNameSetting
+                })
+              }
+            />
+            <span>Vollen Kursnamen anzeigen</span>
+          </label>
+          <label className="check-row">
             <input type="checkbox" checked={showRoom} onChange={() => setShowRoom((v) => !v)} />
             <span>Raum anzeigen</span>
           </label>
@@ -413,26 +409,12 @@ export function CalendarPage({ showFullName }: Props) {
         </div>
 
         <div className="filter-group">
-          <h3>Export / Import</h3>
+          <h3>Aktionen</h3>
           <div className="button-stack">
             <button type="button" className="primary-btn" onClick={() => void exportIcs()}>
               ICS exportieren
             </button>
-            <button type="button" onClick={() => void exportJson()}>
-              JSON exportieren
-            </button>
-            <label className="import-label">
-              JSON importieren
-              <input
-                type="file"
-                accept="application/json,.json"
-                onChange={(event) => {
-                  const file = event.target.files?.[0] ?? null;
-                  void importJson(file);
-                  event.currentTarget.value = "";
-                }}
-              />
-            </label>
+            <small>Freigabelinks und das Öffnen geteilter Pläne findest du oben in der Kopfzeile.</small>
             {actionStatus ? <small>{actionStatus}</small> : null}
           </div>
         </div>

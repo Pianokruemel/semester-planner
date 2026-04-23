@@ -1,28 +1,52 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiClient } from "../api/client";
-import { Course } from "../api/types";
-
-const queryKey = ["courses"];
+import { useMemo } from "react";
+import { PlannerCourse, createAppointmentId } from "../api/types";
+import { usePlannerStore } from "../planner/store";
 
 export function useCourses() {
-  return useQuery({
-    queryKey,
-    queryFn: async () => {
-      const response = await apiClient.get<Course[]>("/courses");
-      return response.data;
+  const { snapshot } = usePlannerStore();
+
+  const data = useMemo<PlannerCourse[]>(() => {
+    if (!snapshot) {
+      return [];
     }
-  });
+
+    const categoryMap = new Map(snapshot.categories.map((category) => [category.id, category]));
+
+    return snapshot.courses.map((course) => ({
+      id: course.id,
+      name: course.name,
+      abbreviation: course.abbreviation,
+      cp: course.cp,
+      categoryId: course.category_id,
+      isActive: course.is_active,
+      category: course.category_id ? categoryMap.get(course.category_id) ?? null : null,
+      appointments: course.appointments.map((appointment, index) => ({
+        id: createAppointmentId(course.id, appointment, index),
+        courseId: course.id,
+        date: appointment.date,
+        timeFrom: appointment.time_from,
+        timeTo: appointment.time_to,
+        room: appointment.room,
+        type: appointment.type
+      }))
+    }));
+  }, [snapshot]);
+
+  return {
+    data,
+    isLoading: false
+  };
 }
 
 export function useToggleCourse() {
-  const queryClient = useQueryClient();
+  const { toggleCourse } = usePlannerStore();
 
-  return useMutation({
-    mutationFn: async (courseId: string) => {
-      await apiClient.patch(`/courses/${courseId}/toggle`);
+  return {
+    mutate(courseId: string) {
+      toggleCourse(courseId);
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey });
+    async mutateAsync(courseId: string) {
+      return toggleCourse(courseId);
     }
-  });
+  };
 }

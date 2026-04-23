@@ -1,5 +1,6 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiClient } from "../api/client";
+import { parseAppointments } from "../planner/appointmentParser";
+import { usePlannerStore } from "../planner/store";
+import { useLocalMutation } from "./useLocalMutation";
 
 export type CoursePayload = {
   name: string;
@@ -10,43 +11,35 @@ export type CoursePayload = {
 };
 
 export function useCreateCourse() {
-  const queryClient = useQueryClient();
+  const { createCourse } = usePlannerStore();
 
-  return useMutation({
-    mutationFn: async (payload: CoursePayload) => {
-      const response = await apiClient.post("/courses", payload);
-      return response.data;
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["courses"] });
-    }
-  });
+  return useLocalMutation(async (payload: CoursePayload) =>
+    createCourse({
+      name: payload.name,
+      abbreviation: payload.abbreviation,
+      cp: payload.cp,
+      category_id: payload.category_id,
+      appointments: parseAppointments(payload.appointments_raw)
+    })
+  );
 }
 
 export function useUpdateCourse() {
-  const queryClient = useQueryClient();
+  const { updateCourse } = usePlannerStore();
 
-  return useMutation({
-    mutationFn: async (payload: CoursePayload & { id: string }) => {
-      const { id, ...body } = payload;
-      const response = await apiClient.put(`/courses/${id}`, body);
-      return response.data;
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["courses"] });
-    }
-  });
+  return useLocalMutation(async (payload: CoursePayload & { id: string }) =>
+    updateCourse(payload.id, {
+      name: payload.name,
+      abbreviation: payload.abbreviation,
+      cp: payload.cp,
+      category_id: payload.category_id,
+      appointments: parseAppointments(payload.appointments_raw)
+    })
+  );
 }
 
 export function useDeleteCourse() {
-  const queryClient = useQueryClient();
+  const { deleteCourse } = usePlannerStore();
 
-  return useMutation({
-    mutationFn: async (id: string) => {
-      await apiClient.delete(`/courses/${id}`);
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["courses"] });
-    }
-  });
+  return useLocalMutation(async (id: string) => deleteCourse(id));
 }

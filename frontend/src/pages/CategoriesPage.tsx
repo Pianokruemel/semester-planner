@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useCreateCategory, useDeleteCategory, useCategories, useUpdateCategory } from "../hooks/useCategories";
+import { CategoryInUseError, useCreateCategory, useDeleteCategory, useCategories, useUpdateCategory } from "../hooks/useCategories";
 
 export function CategoriesPage() {
   const { data: categories = [] } = useCategories();
@@ -32,32 +32,32 @@ export function CategoriesPage() {
       setName("");
       setColor("#6366F1");
       setEditingId(null);
-    } catch (error: any) {
-      setErrorText(error?.response?.data?.message ?? "Speichern fehlgeschlagen.");
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : "Speichern fehlgeschlagen.");
     }
   }
 
   async function onDelete(id: string) {
     try {
       await deleteCategory.mutateAsync({ id });
-    } catch (error: any) {
-      if (error?.response?.status === 409) {
-        const message = error?.response?.data?.message ?? "Diese Kategorie ist in Verwendung.";
-        const list = (error?.response?.data?.affected_courses ?? []).join(", ");
+    } catch (error) {
+      if (error instanceof CategoryInUseError) {
+        const message = error.message;
+        const list = error.affectedCourses.join(", ");
         const confirmText = list ? `${message}\nBetroffene Kurse: ${list}\nTrotzdem loeschen?` : `${message}\nTrotzdem loeschen?`;
         const confirmed = window.confirm(confirmText);
 
         if (confirmed) {
           try {
             await deleteCategory.mutateAsync({ id, confirm: true });
-          } catch (confirmError: any) {
-            setErrorText(confirmError?.response?.data?.message ?? "Loeschen fehlgeschlagen.");
+          } catch (confirmError) {
+            setErrorText(confirmError instanceof Error ? confirmError.message : "Loeschen fehlgeschlagen.");
           }
         }
         return;
       }
 
-      setErrorText(error?.response?.data?.message ?? "Loeschen fehlgeschlagen.");
+      setErrorText(error instanceof Error ? error.message : "Loeschen fehlgeschlagen.");
     }
   }
 

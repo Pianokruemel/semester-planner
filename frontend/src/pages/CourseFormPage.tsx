@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { apiClient } from "../api/client";
 import { useCategories } from "../hooks/useCategories";
 import { useCourses } from "../hooks/useCourses";
 import { useCreateCourse, useDeleteCourse, useUpdateCourse } from "../hooks/useCourseMutations";
+import { formatAppointmentsForTextarea, summarizeAppointments } from "../planner/appointmentParser";
 
 type Props = {
   mode: "create" | "edit";
@@ -34,12 +34,7 @@ export function CourseFormPage({ mode }: Props) {
   const [categoryId, setCategoryId] = useState<string>("");
   const [appointmentsRaw, setAppointmentsRaw] = useState("");
   const [errorText, setErrorText] = useState("");
-  const [preview, setPreview] = useState<{
-    count: number;
-    date_from: string | null;
-    date_to: string | null;
-    types: string[];
-  } | null>(null);
+  const [preview, setPreview] = useState<ReturnType<typeof summarizeAppointments> | null>(null);
   const [previewError, setPreviewError] = useState("");
   const isSaving = createCourse.isPending || updateCourse.isPending;
   const isDeleting = deleteCourse.isPending;
@@ -54,32 +49,7 @@ export function CourseFormPage({ mode }: Props) {
     setAbbreviation(existingCourse.abbreviation);
     setCp(existingCourse.cp);
     setCategoryId(existingCourse.categoryId ?? "");
-
-    // Format dates exactly as parser expects: "Mo, 13. Apr. 2026"
-    const daysOfWeek = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
-    const months = ["Jan.", "Feb.", "Mär.", "Apr.", "Mai", "Jun.", "Jul.", "Aug.", "Sep.", "Okt.", "Nov.", "Dez."];
-
-    const raw = existingCourse.appointments
-      .map((appointment, index) => {
-        const d = new Date(appointment.date);
-        const from = new Date(appointment.timeFrom);
-        const to = new Date(appointment.timeTo);
-
-        const dayAbbr = daysOfWeek[d.getUTCDay()];
-        const dayNum = d.getUTCDate();
-        const monthAbbr = months[d.getUTCMonth()];
-        const year = d.getUTCFullYear();
-        const formattedDate = `${dayAbbr}, ${dayNum}. ${monthAbbr} ${year}`;
-
-        const maybeStar = appointment.type === "Vorlesung" ? "*" : "";
-        const fromText = `${String(from.getUTCHours()).padStart(2, "0")}:${String(from.getUTCMinutes()).padStart(2, "0")}`;
-        const toText = `${String(to.getUTCHours()).padStart(2, "0")}:${String(to.getUTCMinutes()).padStart(2, "0")}`;
-
-        return `${index + 1}\t${formattedDate}${maybeStar}\t${fromText}\t${toText}\t${appointment.room}\t`;
-      })
-      .join("\n");
-
-    setAppointmentsRaw(`Nr\tDatum\tVon\tBis\tRaum\tLehrende\n${raw}`);
+    setAppointmentsRaw(formatAppointmentsForTextarea(existingCourse.appointments));
   }, [existingCourse]);
 
   useEffect(() => {
@@ -90,16 +60,13 @@ export function CourseFormPage({ mode }: Props) {
       return;
     }
 
-    const timer = window.setTimeout(async () => {
+    const timer = window.setTimeout(() => {
       try {
-        const response = await apiClient.post("/courses/preview", {
-          appointments_raw: appointmentsRaw
-        });
-        setPreview(response.data);
+        setPreview(summarizeAppointments(appointmentsRaw));
         setPreviewError("");
-      } catch (error: any) {
+      } catch (error) {
         setPreview(null);
-        setPreviewError(error?.response?.data?.message ?? "Parsing fehlgeschlagen.");
+        setPreviewError(error instanceof Error ? error.message : "Parsing fehlgeschlagen.");
       }
     }, 300);
 
@@ -138,15 +105,8 @@ export function CourseFormPage({ mode }: Props) {
       }
 
       navigate("/");
-    } catch (error: any) {
-      const status = error?.response?.status;
-      if (status === 404) {
-        setErrorText("Kurs nicht mehr vorhanden. Bitte zur Übersicht zurückkehren.");
-      } else if (status === 400) {
-        setErrorText(error?.response?.data?.message ?? "Eingabefehler. Bitte überprüfen Sie die Daten.");
-      } else {
-        setErrorText(error?.response?.data?.message ?? "Speichern fehlgeschlagen.");
-      }
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : "Speichern fehlgeschlagen.");
     }
   }
 
@@ -163,8 +123,8 @@ export function CourseFormPage({ mode }: Props) {
     try {
       await deleteCourse.mutateAsync(id);
       navigate("/");
-    } catch (error: any) {
-      setErrorText(error?.response?.data?.message ?? "Loeschen fehlgeschlagen.");
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : "Loeschen fehlgeschlagen.");
     }
   }
 

@@ -1,67 +1,46 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiClient } from "../api/client";
+import { useMemo } from "react";
+import { PlannerCategory } from "../api/types";
+import { CategoryInUseError, usePlannerStore } from "../planner/store";
+import { useLocalMutation } from "./useLocalMutation";
 
-type CategoryWithCount = {
-  id: string;
-  name: string;
-  color: string;
-  _count?: {
-    courses: number;
-  };
-};
-
-const queryKey = ["categories"];
+export { CategoryInUseError };
 
 export function useCategories() {
-  return useQuery({
-    queryKey,
-    queryFn: async () => {
-      const response = await apiClient.get<CategoryWithCount[]>("/categories");
-      return response.data;
+  const { snapshot } = usePlannerStore();
+
+  const data = useMemo<PlannerCategory[]>(() => {
+    if (!snapshot) {
+      return [];
     }
-  });
+
+    return snapshot.categories.map((category) => ({
+      ...category,
+      _count: {
+        courses: snapshot.courses.filter((course) => course.category_id === category.id).length
+      }
+    }));
+  }, [snapshot]);
+
+  return {
+    data,
+    isLoading: false
+  };
 }
 
 export function useCreateCategory() {
-  const queryClient = useQueryClient();
+  const { createCategory } = usePlannerStore();
 
-  return useMutation({
-    mutationFn: async (payload: { name: string; color: string }) => {
-      const response = await apiClient.post("/categories", payload);
-      return response.data;
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey });
-    }
-  });
+  return useLocalMutation(async (payload: { name: string; color: string }) => createCategory(payload));
 }
 
 export function useUpdateCategory() {
-  const queryClient = useQueryClient();
+  const { updateCategory } = usePlannerStore();
 
-  return useMutation({
-    mutationFn: async (payload: { id: string; name: string; color: string }) => {
-      const { id, ...body } = payload;
-      const response = await apiClient.put(`/categories/${id}`, body);
-      return response.data;
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey });
-      void queryClient.invalidateQueries({ queryKey: ["courses"] });
-    }
-  });
+  return useLocalMutation(async (payload: { id: string; name: string; color: string }) => updateCategory(payload));
 }
 
 export function useDeleteCategory() {
-  const queryClient = useQueryClient();
+  const { deleteCategory } = usePlannerStore();
 
-  return useMutation({
-    mutationFn: async (payload: { id: string; confirm?: boolean }) => {
-      return apiClient.delete(`/categories/${payload.id}${payload.confirm ? "?confirm=true" : ""}`);
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey });
-      void queryClient.invalidateQueries({ queryKey: ["courses"] });
-    }
-  });
+  return useLocalMutation(async (payload: { id: string; confirm?: boolean }) => deleteCategory(payload));
 }
