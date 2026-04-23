@@ -190,6 +190,7 @@ Frontend runs on `http://localhost:3000`.
 - `POSTGRES_PASSWORD` default: `appsecret`
 - `VITE_API_URL` default: `/api`
 - `API_PROXY_TARGET` default: `http://backend:4000`
+- `ALLOWED_HOSTS` default: `semesti.plani.dev` (comma-separated Vite dev-server host allowlist for tunnel or reverse-proxy domains)
 - `CF_TUNNEL_TOKEN` default: empty, required for the default tunnel-enabled compose mode
 
 ### Backend (`backend/.env`)
@@ -204,6 +205,7 @@ Frontend runs on `http://localhost:3000`.
 
 - `VITE_API_URL` default: `/api`
 - `API_PROXY_TARGET` default: `http://localhost:4000`
+- `ALLOWED_HOSTS` default: `semesti.plani.dev` (comma-separated additional hostnames Vite should accept)
 
 ## API Overview
 

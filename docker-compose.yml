@@ -35,6 +35,7 @@ services:
     environment:
       VITE_API_URL: ${VITE_API_URL:-/api}
       API_PROXY_TARGET: ${API_PROXY_TARGET:-http://backend:4000}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-semesti.plani.dev}
     expose:
       - "3000"
     depends_on:
