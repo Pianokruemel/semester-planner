@@ -3,10 +3,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import App from "./App";
-import { plannerSnapshotFingerprint, plannerSnapshotVersion, type PlannerSnapshot } from "./api/types";
+import { defaultUiPreferences, plannerSnapshotFingerprint, plannerSnapshotVersion, type PlannerSnapshot } from "./api/types";
 import { PlannerProvider } from "./planner/store";
 
 const plannerDraftStorageKey = "semester-planner:draft:v1";
+const uiPreferencesStorageKey = "semester-planner:ui-preferences:v1";
 
 function renderHydratedRoute(initialEntry: string, snapshot: PlannerSnapshot) {
   window.localStorage.setItem(
@@ -100,5 +101,49 @@ describe("persisted session hydration routing", () => {
 
     expect(await screen.findByText("26.04. - 02.05.2026")).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "Analysis 1" })).toBeChecked();
+  });
+
+  it("resets local filters after creating a course", async () => {
+    const snapshot: PlannerSnapshot = {
+      export_version: plannerSnapshotVersion,
+      settings: {},
+      categories: [],
+      courses: []
+    };
+
+    window.localStorage.setItem(
+      uiPreferencesStorageKey,
+      JSON.stringify({
+        dark_mode: false,
+        show_full_name: false,
+        active_filters: {
+          cp: [3],
+          hideTypes: ["Vorlesung"],
+          showRoom: false,
+          showType: false,
+          showTime: false,
+          showTotalCp: false
+        }
+      })
+    );
+
+    renderHydratedRoute("/courses/new", snapshot);
+
+    fireEvent.change(screen.getByLabelText("Kursname"), { target: { value: "Analysis 1" } });
+    fireEvent.change(screen.getByLabelText("Abkürzung"), { target: { value: "AN1" } });
+    fireEvent.change(screen.getByLabelText("Termine (TUCaN-Format)"), {
+      target: {
+        value: "1\tMo, 27. Apr. 2026\t08:55\t10:35\tS311/08\tDozent"
+      }
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Speichern" }));
+
+    expect(await screen.findByRole("checkbox", { name: "Vorlesung ausblenden" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "6 CP" })).not.toBeChecked();
+    expect(screen.getByText("26.04. - 02.05.2026")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /AN1 - 08:55-10:35 \| S311\/08 \| Vorlesung/ })).toBeInTheDocument();
+
+    expect(JSON.parse(window.localStorage.getItem(uiPreferencesStorageKey) || "null")).toEqual(defaultUiPreferences);
   });
 });

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { formatAppointmentType, type SnapshotAppointment } from "../api/types";
+import { defaultUiPreferences, formatAppointmentType, type SnapshotAppointment } from "../api/types";
 import { useCategories } from "../hooks/useCategories";
 import { useCourses } from "../hooks/useCourses";
+import { useUpdateSettings } from "../hooks/useSettings";
 import { useCreateCourse, useDeleteCourse, useUpdateCourse } from "../hooks/useCourseMutations";
 import { formatAppointmentsForTextarea, summarizeAppointments } from "../planner/appointmentParser";
 
@@ -23,6 +24,7 @@ export function CourseFormPage({ mode }: Props) {
   const { id } = useParams();
   const { data: categories = [] } = useCategories();
   const { data: courses = [], isLoading: isLoadingCourses } = useCourses();
+  const updateSettings = useUpdateSettings();
   const createCourse = useCreateCourse();
   const updateCourse = useUpdateCourse();
   const deleteCourse = useDeleteCourse();
@@ -45,7 +47,7 @@ export function CourseFormPage({ mode }: Props) {
   const [errorText, setErrorText] = useState("");
   const [preview, setPreview] = useState<ReturnType<typeof summarizeAppointments> | null>(null);
   const [previewError, setPreviewError] = useState("");
-  const isSaving = createCourse.isPending || updateCourse.isPending;
+  const isSaving = createCourse.isPending || updateCourse.isPending || updateSettings.isPending;
   const isDeleting = deleteCourse.isPending;
   const isBusy = isSaving || isDeleting || (mode === "edit" && isLoadingCourses);
 
@@ -103,6 +105,9 @@ export function CourseFormPage({ mode }: Props) {
           cp,
           category_id: categoryId || null,
           appointments_raw: appointmentsRaw
+        });
+        await updateSettings.mutateAsync({
+          active_filters: defaultUiPreferences.active_filters
         });
         focusDate = getEarliestAppointmentDate(createdCourse.appointments);
       } else if (id) {
