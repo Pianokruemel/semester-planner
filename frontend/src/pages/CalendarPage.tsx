@@ -1,4 +1,6 @@
 import dayjs from "dayjs";
+import "dayjs/locale/de";
+import updateLocale from "dayjs/plugin/updateLocale";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Calendar, View, Views, dayjsLocalizer } from "react-big-calendar";
@@ -7,6 +9,10 @@ import { AppointmentType, formatAppointmentType } from "../api/types";
 import { useCourses, useToggleCourse } from "../hooks/useCourses";
 import { useSettings, useUpdateSettings } from "../hooks/useSettings";
 import { ExportAppointment, buildIcs } from "../planner/icsExporter";
+
+dayjs.extend(updateLocale);
+dayjs.updateLocale("de", { weekStart: 1 });
+dayjs.locale("de");
 
 const localizer = dayjsLocalizer(dayjs);
 
@@ -43,6 +49,27 @@ function parseLocalTimeParts(time: string) {
   }
 
   return { hour, minute };
+}
+
+function getWeekStart(date: Date) {
+  return dayjs(date).startOf("week");
+}
+
+function weekContainsVisibleWeekendLecture(events: CalendarEvent[], currentDate: Date) {
+  const weekStart = getWeekStart(currentDate);
+  const nextWeekStart = weekStart.add(1, "week").valueOf();
+  const weekStartValue = weekStart.valueOf();
+
+  return events.some((event) => {
+    if (event.type !== "Vorlesung") {
+      return false;
+    }
+
+    const eventTime = event.start.getTime();
+    const dayOfWeek = event.start.getDay();
+
+    return eventTime >= weekStartValue && eventTime < nextWeekStart && (dayOfWeek === 0 || dayOfWeek === 6);
+  });
 }
 
 export function CalendarPage({ showFullName }: Props) {
@@ -214,19 +241,53 @@ export function CalendarPage({ showFullName }: Props) {
       );
   }, [courses, hideTypes, selectedCps, showFullName, showRoom, showTime, showType]);
 
+  const showWeekendDays = useMemo(() => {
+    if (view !== "week") {
+      return false;
+    }
+
+    return weekContainsVisibleWeekendLecture(events, currentDate);
+  }, [currentDate, events, view]);
+
+  const calendarView = useMemo<View>(() => {
+    if (view === "day") {
+      return Views.DAY;
+    }
+
+    if (view === "month") {
+      return Views.MONTH;
+    }
+
+    return showWeekendDays ? Views.WEEK : Views.WORK_WEEK;
+  }, [showWeekendDays, view]);
+
   const visibleRangeLabel = useMemo(() => {
     if (view === "day") {
       return dayjs(currentDate).format("dd, DD.MM.YYYY");
     }
 
     if (view === "week") {
-      const start = dayjs(currentDate).startOf("week");
-      const end = dayjs(currentDate).endOf("week");
+      const start = getWeekStart(currentDate);
+      const end = start.add(showWeekendDays ? 6 : 4, "day");
       return `${start.format("DD.MM.")} - ${end.format("DD.MM.YYYY")}`;
     }
 
     return dayjs(currentDate).format("MMMM YYYY");
-  }, [currentDate, view]);
+  }, [currentDate, showWeekendDays, view]);
+
+  function handleCalendarViewChange(newView: View) {
+    if (newView === Views.WEEK || newView === Views.WORK_WEEK) {
+      setView("week");
+      return;
+    }
+
+    if (newView === Views.DAY) {
+      setView("day");
+      return;
+    }
+
+    setView("month");
+  }
 
   function navigateCalendar(direction: "prev" | "next" | "today") {
     if (direction === "today") {
@@ -458,11 +519,11 @@ export function CalendarPage({ showFullName }: Props) {
             style={{ height: "76vh" }}
             toolbar={false}
             date={currentDate}
-            view={view}
+            view={calendarView}
             onNavigate={(nextDate: Date) => setCurrentDate(nextDate)}
-            onView={(newView: View) => setView(newView as "week" | "day" | "month")}
+            onView={handleCalendarViewChange}
             onSelectEvent={handleEventClick}
-            views={[Views.WEEK, Views.DAY, Views.MONTH]}
+            views={[Views.WORK_WEEK, Views.WEEK, Views.DAY, Views.MONTH]}
             min={new Date(1970, 1, 1, 7, 0, 0)}
             max={new Date(1970, 1, 1, 20, 0, 0)}
             formats={{
