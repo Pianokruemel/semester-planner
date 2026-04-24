@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { SnapshotExam } from "../api/types";
 import { useCourses } from "../hooks/useCourses";
@@ -22,20 +22,20 @@ function formatExamDate(date: string, timeFrom: string, timeTo: string): string 
   return `${day}.${month}.${year} · ${timeFrom}-${timeTo} Uhr`;
 }
 
-function getConflictLabel(severity: ExamConflictSeverity): string {
+function getConflictIndicatorLabel(severity: ExamConflictSeverity): string {
   if (severity === "red") {
-    return "Rot";
+    return "Direkter Konflikt";
   }
 
   if (severity === "orange") {
-    return "Orange";
+    return "Weniger als 24 Stunden Abstand";
   }
 
   if (severity === "yellow") {
-    return "Gelb";
+    return "Weniger als 48 Stunden Abstand";
   }
 
-  return "Gruen";
+  return "Mehr als 48 Stunden Abstand";
 }
 
 function getImportStatusLabel(row: ExamImportPreviewRow): string {
@@ -65,6 +65,8 @@ function getImportMatchReasonText(row: ExamImportPreviewRow): string | null {
 export function ExamsPage() {
   const { data: courses = [] } = useCourses();
   const { setCourseExam, clearCourseExam, applyImportedExams } = usePlannerStore();
+  const manualSectionRef = useRef<HTMLElement | null>(null);
+  const manualCourseSelectRef = useRef<HTMLSelectElement | null>(null);
   const [selectedCourseId, setSelectedCourseId] = useState("");
   const [manualDate, setManualDate] = useState("");
   const [manualTimeFrom, setManualTimeFrom] = useState("");
@@ -151,6 +153,14 @@ export function ExamsPage() {
     setManualTimeFrom(selectedCourse.exam?.timeFrom ?? "");
     setManualTimeTo(selectedCourse.exam?.timeTo ?? "");
   }, [selectedCourse]);
+
+  function jumpToManualEditor(courseId: string) {
+    setSelectedCourseId(courseId);
+    setManualError("");
+    setManualNotice("");
+    manualSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    manualCourseSelectRef.current?.focus();
+  }
 
   async function handleWorkbookUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -407,15 +417,26 @@ export function ExamsPage() {
               const severity = course.isActive ? conflict?.severity ?? "green" : null;
 
               return (
-                <article key={course.id} className={`exam-card${course.isActive ? "" : " exam-card-muted"}`}>
+                <article
+                  key={course.id}
+                  className={`exam-card${course.isActive ? ` exam-card-${severity ?? "green"}` : " exam-card-muted"}`}
+                >
                   <div className="exam-card-head">
                     <div>
                       <h3>{course.name}</h3>
                       <p className="page-intro">{course.courseNumber ? `Kursnummer: ${course.courseNumber}` : "Keine Kursnummer hinterlegt"}</p>
                     </div>
-                    <span className={`exam-badge${severity ? ` exam-badge-${severity}` : " exam-badge-muted"}`}>
-                      {course.isActive && severity ? getConflictLabel(severity) : "Inaktiv"}
-                    </span>
+                    {course.isActive && severity ? (
+                      <span
+                        className={`exam-severity-indicator exam-severity-indicator-${severity}`}
+                        aria-label={getConflictIndicatorLabel(severity)}
+                        title={getConflictIndicatorLabel(severity)}
+                      >
+                        <span className="sr-only">{getConflictIndicatorLabel(severity)}</span>
+                      </span>
+                    ) : (
+                      <span className="exam-status-pill exam-status-pill-muted">Inaktiv</span>
+                    )}
                   </div>
                   <strong>{formatExamDate(course.exam.date, course.exam.timeFrom, course.exam.timeTo)}</strong>
                   <p className="page-intro">
@@ -424,7 +445,7 @@ export function ExamsPage() {
                       : "Dieser Kurs ist inaktiv und beeinflusst die Konfliktbewertung nicht."}
                   </p>
                   <div className="button-row">
-                    <button type="button" onClick={() => setSelectedCourseId(course.id)}>
+                    <button type="button" onClick={() => jumpToManualEditor(course.id)}>
                       Im Formular bearbeiten
                     </button>
                   </div>
@@ -435,7 +456,7 @@ export function ExamsPage() {
         )}
       </section>
 
-      <section className="page-card page-section">
+      <section ref={manualSectionRef} className="page-card page-section">
         <div>
           <h2>Manuell pflegen</h2>
           <p className="page-intro">Nutze diese Eingabe für einzelne Prüfungen oder wenn eine Importzeile nicht eindeutig war.</p>
@@ -443,7 +464,11 @@ export function ExamsPage() {
         <form className="form-grid" onSubmit={handleManualSubmit}>
           <label className="full-width">
             Kurs
-            <select value={selectedCourseId} onChange={(event) => setSelectedCourseId(event.target.value)}>
+            <select
+              ref={manualCourseSelectRef}
+              value={selectedCourseId}
+              onChange={(event) => setSelectedCourseId(event.target.value)}
+            >
               {sortedCourses.map((course) => (
                 <option key={course.id} value={course.id}>
                   {course.name}

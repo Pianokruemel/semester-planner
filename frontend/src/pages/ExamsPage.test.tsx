@@ -51,6 +51,7 @@ function makeCourse(overrides: Partial<PlannerCourse> = {}): PlannerCourse {
 
 describe("ExamsPage", () => {
   beforeEach(() => {
+    Element.prototype.scrollIntoView = vi.fn();
     mockedParseExamWorkbook.mockReset();
     mockedUsePlannerStore.mockReturnValue({
       setCourseExam: vi.fn(),
@@ -84,10 +85,38 @@ describe("ExamsPage", () => {
       </MemoryRouter>
     );
 
+    expect(screen.queryByText("Gruen")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Gespeicherte Prüfungen" })).toBeInTheDocument();
-    expect(screen.getByText("Gruen")).toBeInTheDocument();
     expect(screen.getByText("Inaktiv")).toBeInTheDocument();
     expect(screen.getByText("Dieser Kurs ist inaktiv und beeinflusst die Konfliktbewertung nicht.")).toBeInTheDocument();
+    expect(screen.getByText("IT-Sicherheit").closest("article")).toHaveClass("exam-card-green");
+  });
+
+  it("jumps to the manual editor and selects the clicked course", () => {
+    mockedUseCourses.mockReturnValue({
+      data: [
+        makeCourse({ id: "course-1", name: "IT-Sicherheit", isActive: true, courseNumber: "20-00-1234" }),
+        makeCourse({
+          id: "course-2",
+          name: "Netze",
+          isActive: true,
+          courseNumber: "20-00-5678",
+          exam: { date: "2026-07-10", timeFrom: "11:00", timeTo: "13:00" }
+        })
+      ],
+      isLoading: false
+    });
+
+    render(
+      <MemoryRouter>
+        <ExamsPage />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Im Formular bearbeiten" })[1]);
+
+    expect(screen.getByLabelText("Kurs")).toHaveValue("course-2");
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
   });
 
   it("shows the match reason in the import preview", async () => {
