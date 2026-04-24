@@ -28,6 +28,8 @@ export type ParsedExamImportRow = {
 
 export type ExamImportPreviewStatus = "matched" | "unmatched" | "ambiguous" | "invalid";
 
+export type ExamImportMatchReason = "course-number-brackets" | "course-number-title" | "course-title-exact";
+
 export type ExamImportPreviewRow = ParsedExamImportRow & {
   normalizedCourseNumbers: string[];
   matchedCourseId: string | null;
@@ -35,12 +37,20 @@ export type ExamImportPreviewRow = ParsedExamImportRow & {
     id: string;
     name: string;
     courseNumber: string | null;
+    matchReasons: ExamImportMatchReason[];
   }>;
   candidateExam: SnapshotExam | null;
   status: ExamImportPreviewStatus;
   message: string;
+  matchReasons: ExamImportMatchReason[];
   overwritesExistingExam: boolean;
 };
+
+const examImportMatchReasonOrder: ExamImportMatchReason[] = [
+  "course-number-brackets",
+  "course-number-title",
+  "course-title-exact"
+];
 
 function padNumber(value: number): string {
   return String(value).padStart(2, "0");
@@ -183,6 +193,41 @@ export function normalizeCourseNumber(value: string): string {
   return value.trim().toUpperCase().replace(/\s+/g, " ");
 }
 
+export function formatExamImportMatchReason(reason: ExamImportMatchReason): string {
+  if (reason === "course-number-brackets") {
+    return "Kursnummer in Klammern";
+  }
+
+  if (reason === "course-number-title") {
+    return "Kursnummer im Titel";
+  }
+
+  return "Titeltreffer";
+}
+
+function normalizeCourseTitle(value: string): string {
+  return value.trim().toUpperCase().replace(/\s+/g, " ");
+}
+
+function stripBracketContents(value: string): string {
+  return value.replace(/\(([^()]*)\)|\[([^\[\]]*)\]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function courseNumberAppearsInTitle(normalizedTitle: string, courseNumber: string): boolean {
+  const normalizedCourseNumber = normalizeCourseNumber(courseNumber);
+
+  if (!normalizedCourseNumber) {
+    return false;
+  }
+
+  const boundaryPattern = new RegExp(`(^|[^0-9A-Z])${escapeRegExp(normalizedCourseNumber)}([^0-9A-Z]|$)`);
+  return boundaryPattern.test(normalizedTitle);
+}
+
 export function extractBracketContents(value: string): string[] {
   const matches: string[] = [];
   const bracketPattern = /\(([^()]+)\)|\[([^\[\]]+)\]/g;
@@ -286,13 +331,39 @@ function buildCourseNumberIndex(courses: PlannerCourse[]): Map<string, PlannerCo
   return index;
 }
 
+function buildCourseTitleIndex(courses: PlannerCourse[]): Map<string, PlannerCourse[]> {
+  const index = new Map<string, PlannerCourse[]>();
+
+  for (const course of courses) {
+    const normalizedCourseTitle = normalizeCourseTitle(course.name);
+
+    if (!normalizedCourseTitle) {
+      continue;
+    }
+
+    const existing = index.get(normalizedCourseTitle) ?? [];
+    existing.push(course);
+    index.set(normalizedCourseTitle, existing);
+  }
+
+  return index;
+}
+
+function sortExamImportMatchReasons(reasons: Iterable<ExamImportMatchReason>): ExamImportMatchReason[] {
+  const uniqueReasons = new Set(reasons);
+  return examImportMatchReasonOrder.filter((reason) => uniqueReasons.has(reason));
+}
+
 export function buildExamImportPreview(rows: ParsedExamImportRow[], courses: PlannerCourse[]): ExamImportPreviewRow[] {
   const courseNumberIndex = buildCourseNumberIndex(courses);
+  const courseTitleIndex = buildCourseTitleIndex(courses);
 
   const previewRows = rows.map((row) => {
     const normalizedCourseNumbers = Array.from(
       new Set(row.extractedCourseNumbers.map((value) => normalizeCourseNumber(value)).filter((value) => value.length > 0))
     );
+    const normalizedCourseTitle = normalizeCourseTitle(row.courseName);
+    const normalizedCourseTitleWithoutBrackets = normalizeCourseTitle(stripBracketContents(row.courseName));
 
     if (row.parseError) {
       return {
@@ -303,30 +374,61 @@ export function buildExamImportPreview(rows: ParsedExamImportRow[], courses: Pla
         candidateExam: null,
         status: "invalid",
         message: row.parseError,
+        matchReasons: [],
         overwritesExistingExam: false
       } satisfies ExamImportPreviewRow;
     }
 
-    if (normalizedCourseNumbers.length === 0) {
-      return {
-        ...row,
-        normalizedCourseNumbers,
-        matchedCourseId: null,
-        matchedCourses: [],
-        candidateExam: null,
-        status: "unmatched",
-        message: "Keine Kursnummer in Klammern gefunden.",
-        overwritesExistingExam: false
-      } satisfies ExamImportPreviewRow;
+    const matchedCourseMap = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        courseNumber: string | null;
+        matchReasons: Set<ExamImportMatchReason>;
+      }
+    >();
+
+    function addMatchedCourses(sourceCourses: PlannerCourse[], reason: ExamImportMatchReason) {
+      for (const course of sourceCourses) {
+        const existing = matchedCourseMap.get(course.id);
+
+        if (existing) {
+          existing.matchReasons.add(reason);
+          continue;
+        }
+
+        matchedCourseMap.set(course.id, {
+          id: course.id,
+          name: course.name,
+          courseNumber: course.courseNumber,
+          matchReasons: new Set([reason])
+        });
+      }
     }
 
-    const matchedCourses = Array.from(
-      new Map(
-        normalizedCourseNumbers
-          .flatMap((courseNumber) => courseNumberIndex.get(courseNumber) ?? [])
-          .map((course) => [course.id, { id: course.id, name: course.name, courseNumber: course.courseNumber }])
-      ).values()
+    addMatchedCourses(
+      normalizedCourseNumbers.flatMap((courseNumber) => courseNumberIndex.get(courseNumber) ?? []),
+      "course-number-brackets"
     );
+    addMatchedCourses(
+      courses.filter((course) => course.courseNumber && courseNumberAppearsInTitle(normalizedCourseTitle, course.courseNumber)),
+      "course-number-title"
+    );
+    addMatchedCourses(courseTitleIndex.get(normalizedCourseTitle) ?? [], "course-title-exact");
+
+    if (normalizedCourseTitleWithoutBrackets !== normalizedCourseTitle) {
+      addMatchedCourses(courseTitleIndex.get(normalizedCourseTitleWithoutBrackets) ?? [], "course-title-exact");
+    }
+
+    const matchedCourses = Array.from(matchedCourseMap.values()).map((course) => ({
+      id: course.id,
+      name: course.name,
+      courseNumber: course.courseNumber,
+      matchReasons: sortExamImportMatchReasons(course.matchReasons)
+    }));
+    const matchReasons = sortExamImportMatchReasons(matchedCourses.flatMap((course) => course.matchReasons));
+    const primaryMatchReasons = matchedCourses[0]?.matchReasons.slice(0, 1) ?? [];
 
     if (matchedCourses.length === 0) {
       return {
@@ -336,7 +438,8 @@ export function buildExamImportPreview(rows: ParsedExamImportRow[], courses: Pla
         matchedCourses: [],
         candidateExam: null,
         status: "unmatched",
-        message: "Keine passende Kursnummer gefunden.",
+        message: "Keine passende Kursnummer oder kein passender Kurstitel gefunden.",
+        matchReasons: [],
         overwritesExistingExam: false
       } satisfies ExamImportPreviewRow;
     }
@@ -350,6 +453,7 @@ export function buildExamImportPreview(rows: ParsedExamImportRow[], courses: Pla
         candidateExam: null,
         status: "ambiguous",
         message: "Mehrere Kurse passen zu dieser Zeile.",
+        matchReasons,
         overwritesExistingExam: false
       } satisfies ExamImportPreviewRow;
     }
@@ -371,6 +475,7 @@ export function buildExamImportPreview(rows: ParsedExamImportRow[], courses: Pla
           : null,
       status: "matched",
       message: matchedCourse?.exam ? "Eindeutiger Treffer, vorhandene Prüfung wird ersetzt." : "Eindeutiger Treffer.",
+      matchReasons: primaryMatchReasons,
       overwritesExistingExam: Boolean(matchedCourse?.exam)
     } satisfies ExamImportPreviewRow;
   });

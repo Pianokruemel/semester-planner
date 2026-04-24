@@ -1,9 +1,10 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlannerCourse } from "../api/types";
 import { useCourses } from "../hooks/useCourses";
+import { parseExamWorkbook } from "../planner/examImport";
 import { ExamsPage } from "./ExamsPage";
 import { usePlannerStore } from "../planner/store";
 
@@ -15,8 +16,18 @@ vi.mock("../planner/store", () => ({
   usePlannerStore: vi.fn()
 }));
 
+vi.mock("../planner/examImport", async () => {
+  const actual = await vi.importActual<typeof import("../planner/examImport")>("../planner/examImport");
+
+  return {
+    ...actual,
+    parseExamWorkbook: vi.fn()
+  };
+});
+
 const mockedUseCourses = vi.mocked(useCourses);
 const mockedUsePlannerStore = vi.mocked(usePlannerStore);
+const mockedParseExamWorkbook = vi.mocked(parseExamWorkbook);
 
 function makeCourse(overrides: Partial<PlannerCourse> = {}): PlannerCourse {
   return {
@@ -40,6 +51,7 @@ function makeCourse(overrides: Partial<PlannerCourse> = {}): PlannerCourse {
 
 describe("ExamsPage", () => {
   beforeEach(() => {
+    mockedParseExamWorkbook.mockReset();
     mockedUsePlannerStore.mockReturnValue({
       setCourseExam: vi.fn(),
       clearCourseExam: vi.fn(),
@@ -76,5 +88,40 @@ describe("ExamsPage", () => {
     expect(screen.getByText("Gruen")).toBeInTheDocument();
     expect(screen.getByText("Inaktiv")).toBeInTheDocument();
     expect(screen.getByText("Dieser Kurs ist inaktiv und beeinflusst die Konfliktbewertung nicht.")).toBeInTheDocument();
+  });
+
+  it("shows the match reason in the import preview", async () => {
+    mockedUseCourses.mockReturnValue({
+      data: [makeCourse({ id: "course-1", name: "Einführung in die Kryptographie", courseNumber: null })],
+      isLoading: false
+    });
+    mockedParseExamWorkbook.mockResolvedValue([
+      {
+        rowNumber: 2,
+        weekday: "Mi",
+        date: "2026-04-26",
+        timeFrom: "10:00",
+        timeTo: "12:00",
+        appointmentType: "Klausur",
+        lecturer: "Dr. Ada",
+        courseName: "Einführung in die Kryptographie",
+        extractedCourseNumbers: [],
+        parseError: null
+      }
+    ]);
+
+    render(
+      <MemoryRouter>
+        <ExamsPage />
+      </MemoryRouter>
+    );
+
+    fireEvent.change(screen.getByLabelText("Excel-Datei auswählen"), {
+      target: {
+        files: [new File(["dummy"], "exam.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })]
+      }
+    });
+
+    expect(await screen.findByText("Match-Grund: Titeltreffer")).toBeInTheDocument();
   });
 });

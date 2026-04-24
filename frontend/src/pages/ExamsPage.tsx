@@ -6,6 +6,7 @@ import { useLocalMutation } from "../hooks/useLocalMutation";
 import { buildExamConflictMap, type ExamConflictSeverity } from "../planner/examConflicts";
 import {
   buildExamImportPreview,
+  formatExamImportMatchReason,
   parseExamWorkbook,
   type ExamImportPreviewRow,
   type ParsedExamImportRow
@@ -51,6 +52,14 @@ function getImportStatusLabel(row: ExamImportPreviewRow): string {
   }
 
   return "Ohne Treffer";
+}
+
+function getImportMatchReasonText(row: ExamImportPreviewRow): string | null {
+  if (row.matchReasons.length === 0) {
+    return null;
+  }
+
+  return row.matchReasons.map((reason) => formatExamImportMatchReason(reason)).join(", ");
 }
 
 export function ExamsPage() {
@@ -357,6 +366,9 @@ export function ExamsPage() {
                     <td>
                       <strong>{getImportStatusLabel(row)}</strong>
                       <span className="muted-text">{row.message}</span>
+                      {getImportMatchReasonText(row) ? (
+                        <span className="muted-text">Match-Grund: {getImportMatchReasonText(row)}</span>
+                      ) : null}
                     </td>
                     <td>
                       {row.matchedCourseId && row.candidateExam && row.status === "ambiguous" ? (

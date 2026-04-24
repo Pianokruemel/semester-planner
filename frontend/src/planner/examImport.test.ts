@@ -31,6 +31,7 @@ describe("exam import parsing", () => {
     expect(parsedRows[0]?.extractedCourseNumbers).toEqual(["20-00-1001"]);
     expect(preview[0]?.status).toBe("matched");
     expect(preview[0]?.matchedCourseId).toBe("course-1");
+    expect(preview[0]?.matchReasons).toEqual(["course-number-brackets"]);
   });
 
   it("extracts multiple bracket tokens from the course name", () => {
@@ -48,7 +49,33 @@ describe("exam import parsing", () => {
     const preview = buildExamImportPreview(parsedRows, [makeCourse({ courseNumber: "20-00-1001" })]);
 
     expect(preview[0]?.status).toBe("unmatched");
-    expect(preview[0]?.message).toContain("Keine Kursnummer");
+    expect(preview[0]?.message).toContain("Keine passende Kursnummer");
+  });
+
+  it("matches a course by exact long title", () => {
+    const parsedRows = parseExamWorksheetRows(
+      makeRows(["Mi", "26.04.2026", "10:00", "12:00", "Klausur", "Dr. Ada", "Einführung in die Kryptographie"])
+    );
+    const preview = buildExamImportPreview(parsedRows, [
+      makeCourse({ id: "course-1", name: "Einführung in die Kryptographie", courseNumber: null })
+    ]);
+
+    expect(preview[0]?.status).toBe("matched");
+    expect(preview[0]?.matchedCourseId).toBe("course-1");
+    expect(preview[0]?.matchReasons).toEqual(["course-title-exact"]);
+  });
+
+  it("matches a course when the course number appears anywhere in the exam title", () => {
+    const parsedRows = parseExamWorksheetRows(
+      makeRows(["Mi", "26.04.2026", "10:00", "12:00", "Klausur", "Dr. Ada", "Klausur Einführung ITS 20-00-1001"])
+    );
+    const preview = buildExamImportPreview(parsedRows, [
+      makeCourse({ id: "course-1", name: "Einführung in die Kryptographie", courseNumber: "20-00-1001" })
+    ]);
+
+    expect(preview[0]?.status).toBe("matched");
+    expect(preview[0]?.matchedCourseId).toBe("course-1");
+    expect(preview[0]?.matchReasons).toEqual(["course-number-title"]);
   });
 
   it("marks rows with missing required fields as invalid", () => {
