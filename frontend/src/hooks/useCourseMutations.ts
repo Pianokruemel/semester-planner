@@ -7,6 +7,7 @@ export type CoursePayload = {
   abbreviation: string;
   cp: number;
   category_id: string | null;
+  course_number: string | null;
   appointments_raw: string;
 };
 
@@ -19,6 +20,7 @@ export function useCreateCourse() {
       abbreviation: payload.abbreviation,
       cp: payload.cp,
       category_id: payload.category_id,
+      course_number: payload.course_number,
       appointments: parseAppointments(payload.appointments_raw)
     })
   );
@@ -33,6 +35,7 @@ export function useUpdateCourse() {
       abbreviation: payload.abbreviation,
       cp: payload.cp,
       category_id: payload.category_id,
+      course_number: payload.course_number,
       appointments: parseAppointments(payload.appointments_raw)
     })
   );

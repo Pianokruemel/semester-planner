@@ -6,6 +6,7 @@ import { useSettings, useUpdateSettings } from "./hooks/useSettings";
 import { CalendarPage } from "./pages/CalendarPage";
 import { CategoriesPage } from "./pages/CategoriesPage";
 import { CourseFormPage } from "./pages/CourseFormPage";
+import { ExamsPage } from "./pages/ExamsPage";
 import { buildShareUrl, extractShareCode, readShareCodeFromHash } from "./planner/shareLinks";
 import { usePlannerStore } from "./planner/store";
 
@@ -187,7 +188,7 @@ function App() {
       const result = await createShare();
       showShareResult({
         title: "Link erstellt",
-        description: "Der aktuelle Stand ist jetzt als verschlüsselter Link gespeichert. Bewahre den Acht-Wort-Code gut auf.",
+        description: "Der aktuelle Stand mit Kursnummern und Prüfungen ist jetzt als verschlüsselter Link gespeichert. Bewahre den Acht-Wort-Code gut auf.",
         code: result.code
       });
     } catch (error) {
@@ -335,7 +336,7 @@ function App() {
         <div className="entry-notes share-panel-notes">
           <article className="entry-note">
             <strong>Was geteilt wird</strong>
-            <p>Kategorien, Kurse, Termine und aktive Kurse werden im Snapshot verschlüsselt gespeichert.</p>
+            <p>Kategorien, Kurse, Kursnummern, Prüfungen, Termine und aktive Kurse werden im Snapshot verschlüsselt gespeichert.</p>
           </article>
           <article className="entry-note">
             <strong>Was lokal bleibt</strong>
@@ -454,7 +455,7 @@ function App() {
           <div className="entry-notes">
             <article className="entry-note">
               <strong>Im Browser behalten</strong>
-              <p>Du bearbeitest Kategorien, Kurse und Termine komplett lokal, auch bevor du etwas teilst.</p>
+              <p>Du bearbeitest Kategorien, Kurse, Kursnummern, Prüfungen und Termine komplett lokal, auch bevor du etwas teilst.</p>
             </article>
             <article className="entry-note">
               <strong>Beim Teilen</strong>
@@ -481,6 +482,7 @@ function App() {
         </div>
         <nav>
           <NavLink to="/">Kalender</NavLink>
+          <NavLink to="/exams">Prüfungen</NavLink>
           <NavLink to="/courses/new">Neuer Kurs</NavLink>
           <NavLink to="/categories">Kategorien</NavLink>
         </nav>
@@ -510,6 +512,7 @@ function App() {
       <main className="app-main">
         <Routes>
           <Route path="/" element={<CalendarPage showFullName={mergedSettings.show_full_name} />} />
+          <Route path="/exams" element={<ExamsPage />} />
           <Route path="/courses/new" element={<CourseFormPage mode="create" />} />
           <Route path="/courses/:id/edit" element={<CourseFormPage mode="edit" />} />
           <Route path="/categories" element={<CategoriesPage />} />

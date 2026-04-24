@@ -5,6 +5,7 @@ import {
   SnapshotAppointment,
   SnapshotCategory,
   SnapshotCourse,
+  SnapshotExam,
   UiPreferences,
   UiPreferencesPatch,
   createEmptyPlannerSnapshot,
@@ -32,6 +33,8 @@ type CourseMutationInput = {
   abbreviation: string;
   cp: number;
   category_id: string | null;
+  course_number?: string | null;
+  exam?: SnapshotExam | null;
   appointments: SnapshotAppointment[];
 };
 
@@ -50,6 +53,10 @@ type PlannerContextValue = {
   deleteCategory: (payload: { id: string; confirm?: boolean }) => void;
   createCourse: (payload: CourseMutationInput) => SnapshotCourse;
   updateCourse: (id: string, payload: CourseMutationInput) => SnapshotCourse;
+  setCourseNumber: (id: string, courseNumber: string | null) => SnapshotCourse;
+  setCourseExam: (id: string, exam: SnapshotExam) => SnapshotCourse;
+  clearCourseExam: (id: string) => SnapshotCourse;
+  applyImportedExams: (payload: Array<{ courseId: string; exam: SnapshotExam }>) => SnapshotCourse[];
   deleteCourse: (id: string) => void;
   toggleCourse: (id: string) => SnapshotCourse;
   createShare: () => Promise<{ code: string }>;
@@ -108,6 +115,7 @@ function ensureSession(session: PlannerSession | null): PlannerSession {
 function ensureCoursePayload(session: PlannerSession, payload: CourseMutationInput): CourseMutationInput {
   const name = payload.name.trim();
   const abbreviation = payload.abbreviation.trim();
+  const courseNumber = typeof payload.course_number === "string" ? payload.course_number.trim() : "";
 
   if (!name) {
     throw new Error("Kursname darf nicht leer sein.");
@@ -130,8 +138,26 @@ function ensureCoursePayload(session: PlannerSession, payload: CourseMutationInp
     abbreviation,
     cp: payload.cp,
     category_id: payload.category_id,
+    course_number: payload.course_number === undefined ? undefined : courseNumber.length > 0 ? courseNumber : null,
+    exam: payload.exam,
     appointments: payload.appointments
   };
+}
+
+function ensureCourseExam(exam: SnapshotExam): SnapshotExam {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(exam.date)) {
+    throw new Error("Prüfungsdatum ist ungültig.");
+  }
+
+  if (!/^\d{2}:\d{2}$/.test(exam.time_from)) {
+    throw new Error("Prüfungsstart ist ungültig.");
+  }
+
+  if (!/^\d{2}:\d{2}$/.test(exam.time_to)) {
+    throw new Error("Prüfungsende ist ungültig.");
+  }
+
+  return exam;
 }
 
 const PlannerContext = createContext<PlannerContextValue | null>(null);
@@ -202,6 +228,35 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
 
   function updateUiPreferences(patch: UiPreferencesPatch) {
     setUiPreferences((current) => mergeUiPreferencesPatch(current, patch));
+  }
+
+  function requireCourse(current: PlannerSession, id: string): SnapshotCourse {
+    const existing = current.snapshot.courses.find((course) => course.id === id);
+
+    if (!existing) {
+      throw new Error("Kurs nicht gefunden.");
+    }
+
+    return existing;
+  }
+
+  function updateCourseInSession(
+    current: PlannerSession,
+    id: string,
+    updater: (course: SnapshotCourse) => SnapshotCourse
+  ): SnapshotCourse {
+    const existing = requireCourse(current, id);
+    const updated = updater(existing);
+
+    updateSession({
+      ...current,
+      snapshot: {
+        ...current.snapshot,
+        courses: current.snapshot.courses.map((course) => (course.id === id ? updated : course))
+      }
+    });
+
+    return updated;
   }
 
   function createCategory(payload: { name: string; color: string }) {
@@ -295,6 +350,8 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
     const created = {
       id: crypto.randomUUID(),
       ...input,
+      course_number: input.course_number ?? null,
+      exam: input.exam ?? null,
       is_active: true
     } satisfies SnapshotCourse;
 
@@ -311,16 +368,13 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
 
   function updateCourse(id: string, payload: CourseMutationInput) {
     const current = ensureSession(session);
-    const existing = current.snapshot.courses.find((course) => course.id === id);
-
-    if (!existing) {
-      throw new Error("Kurs nicht gefunden.");
-    }
-
+    const existing = requireCourse(current, id);
     const input = ensureCoursePayload(current, payload);
     const updated = {
       ...existing,
-      ...input
+      ...input,
+      course_number: input.course_number === undefined ? existing.course_number : input.course_number,
+      exam: input.exam === undefined ? existing.exam : input.exam
     } satisfies SnapshotCourse;
 
     updateSession({
@@ -334,11 +388,74 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
     return updated;
   }
 
+  function setCourseNumber(id: string, courseNumber: string | null) {
+    const current = ensureSession(session);
+    const normalizedCourseNumber = typeof courseNumber === "string" ? courseNumber.trim() : "";
+
+    return updateCourseInSession(current, id, (course) => ({
+      ...course,
+      course_number: normalizedCourseNumber.length > 0 ? normalizedCourseNumber : null
+    }));
+  }
+
+  function setCourseExam(id: string, exam: SnapshotExam) {
+    const current = ensureSession(session);
+    const normalizedExam = ensureCourseExam(exam);
+
+    return updateCourseInSession(current, id, (course) => ({
+      ...course,
+      exam: normalizedExam
+    }));
+  }
+
+  function clearCourseExam(id: string) {
+    const current = ensureSession(session);
+
+    return updateCourseInSession(current, id, (course) => ({
+      ...course,
+      exam: null
+    }));
+  }
+
+  function applyImportedExams(payload: Array<{ courseId: string; exam: SnapshotExam }>) {
+    const current = ensureSession(session);
+    const examByCourseId = new Map(payload.map((entry) => [entry.courseId, ensureCourseExam(entry.exam)]));
+
+    if (examByCourseId.size === 0) {
+      return [];
+    }
+
+    for (const courseId of examByCourseId.keys()) {
+      requireCourse(current, courseId);
+    }
+
+    const updatedCourses = current.snapshot.courses.map((course) => {
+      const exam = examByCourseId.get(course.id);
+
+      if (!exam) {
+        return course;
+      }
+
+      return {
+        ...course,
+        exam
+      };
+    });
+
+    updateSession({
+      ...current,
+      snapshot: {
+        ...current.snapshot,
+        courses: updatedCourses
+      }
+    });
+
+    return updatedCourses.filter((course) => examByCourseId.has(course.id));
+  }
+
   function deleteCourse(id: string) {
     const current = ensureSession(session);
-    if (!current.snapshot.courses.some((course) => course.id === id)) {
-      throw new Error("Kurs nicht gefunden.");
-    }
+    requireCourse(current, id);
 
     updateSession({
       ...current,
@@ -351,26 +468,10 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
 
   function toggleCourse(id: string) {
     const current = ensureSession(session);
-    const existing = current.snapshot.courses.find((course) => course.id === id);
-
-    if (!existing) {
-      throw new Error("Kurs nicht gefunden.");
-    }
-
-    const updated = {
-      ...existing,
-      is_active: !existing.is_active
-    } satisfies SnapshotCourse;
-
-    updateSession({
-      ...current,
-      snapshot: {
-        ...current.snapshot,
-        courses: current.snapshot.courses.map((course) => (course.id === id ? updated : course))
-      }
-    });
-
-    return updated;
+    return updateCourseInSession(current, id, (course) => ({
+      ...course,
+      is_active: !course.is_active
+    }));
   }
 
   async function persistShare(parentSnapshotId: string | null) {
@@ -454,6 +555,10 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
       deleteCategory,
       createCourse,
       updateCourse,
+      setCourseNumber,
+      setCourseExam,
+      clearCourseExam,
+      applyImportedExams,
       deleteCourse,
       toggleCourse,
       createShare,

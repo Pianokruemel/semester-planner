@@ -57,7 +57,9 @@ describe("persisted session hydration routing", () => {
           abbreviation: "ITS",
           cp: 6,
           category_id: "category-1",
+          course_number: null,
           is_active: true,
+          exam: null,
           appointments: [
             {
               date: "2026-04-27",
@@ -120,5 +122,37 @@ describe("persisted session hydration routing", () => {
     expect(screen.getByRole("checkbox", { name: "Analysis 1" })).toBeChecked();
 
     expect(JSON.parse(window.localStorage.getItem(uiPreferencesStorageKey) || "null")).toEqual(defaultUiPreferences);
+  });
+
+  it("renders the exams route directly from a persisted draft", async () => {
+    const snapshot: PlannerSnapshot = {
+      export_version: plannerSnapshotVersion,
+      settings: {},
+      categories: [],
+      courses: [
+        {
+          id: "course-1",
+          name: "IT-Sicherheit Vertiefung",
+          abbreviation: "ITS",
+          cp: 6,
+          category_id: null,
+          course_number: "20-00-1234",
+          is_active: true,
+          exam: {
+            date: "2026-07-10",
+            time_from: "10:00",
+            time_to: "12:00"
+          },
+          appointments: []
+        }
+      ]
+    };
+
+    renderHydratedRoute("/exams", snapshot);
+
+    expect(await screen.findByRole("heading", { name: "Prüfungen" })).toBeInTheDocument();
+    expect(screen.getByText("IT-Sicherheit Vertiefung")).toBeInTheDocument();
+    expect(screen.getByText("Kursnummer: 20-00-1234")).toBeInTheDocument();
+    expect(screen.getByText("10.07.2026 · 10:00-12:00 Uhr")).toBeInTheDocument();
   });
 });

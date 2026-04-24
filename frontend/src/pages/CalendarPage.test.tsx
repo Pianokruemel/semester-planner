@@ -60,8 +60,10 @@ function makeCourse(overrides: Partial<PlannerCourse> = {}): PlannerCourse {
     abbreviation: overrides.abbreviation ?? "SWT",
     cp: overrides.cp ?? 5,
     categoryId: overrides.categoryId ?? null,
+    courseNumber: overrides.courseNumber ?? null,
     isActive: overrides.isActive ?? true,
     category: overrides.category ?? null,
+    exam: overrides.exam ?? null,
     appointments: overrides.appointments ?? [makeAppointment({})]
   };
 }

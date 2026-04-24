@@ -5,6 +5,7 @@ import {
   ShareEnvelope,
   normalizePlannerSnapshot,
   plannerSnapshotVersion,
+  supportedPlannerSnapshotVersions,
   shareCryptoVersion
 } from "../api/types";
 
@@ -119,7 +120,7 @@ export async function encryptPlannerSnapshot(
 }
 
 export async function decryptPlannerSnapshot(envelope: ShareEnvelope, code: string): Promise<PlannerSnapshot> {
-  if (envelope.payload_version !== plannerSnapshotVersion) {
+  if (!supportedPlannerSnapshotVersions.includes(envelope.payload_version as (typeof supportedPlannerSnapshotVersions)[number])) {
     throw new Error("Unbekannte Snapshot-Version.");
   }
 

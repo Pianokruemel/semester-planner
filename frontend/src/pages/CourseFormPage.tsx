@@ -35,6 +35,7 @@ export function CourseFormPage({ mode }: Props) {
   const [abbreviation, setAbbreviation] = useState("");
   const [cp, setCp] = useState(6);
   const [categoryId, setCategoryId] = useState<string>("");
+  const [courseNumber, setCourseNumber] = useState("");
   const [appointmentsRaw, setAppointmentsRaw] = useState("");
   const [errorText, setErrorText] = useState("");
   const [preview, setPreview] = useState<ReturnType<typeof summarizeAppointments> | null>(null);
@@ -52,6 +53,7 @@ export function CourseFormPage({ mode }: Props) {
     setAbbreviation(existingCourse.abbreviation);
     setCp(existingCourse.cp);
     setCategoryId(existingCourse.categoryId ?? "");
+    setCourseNumber(existingCourse.courseNumber ?? "");
     setAppointmentsRaw(formatAppointmentsForTextarea(existingCourse.appointments));
   }, [existingCourse]);
 
@@ -94,6 +96,7 @@ export function CourseFormPage({ mode }: Props) {
           abbreviation,
           cp,
           category_id: categoryId || null,
+          course_number: courseNumber.trim() || null,
           appointments_raw: appointmentsRaw
         });
         await updateSettings.mutateAsync({
@@ -106,6 +109,7 @@ export function CourseFormPage({ mode }: Props) {
           abbreviation,
           cp,
           category_id: categoryId || null,
+          course_number: courseNumber.trim() || null,
           appointments_raw: appointmentsRaw
         });
       }
@@ -183,6 +187,15 @@ export function CourseFormPage({ mode }: Props) {
             value={cp}
             onChange={(event) => setCp(Number(event.target.value))}
             required
+            disabled={isBusy}
+          />
+        </label>
+        <label>
+          Kursnummer
+          <input
+            value={courseNumber}
+            onChange={(event) => setCourseNumber(event.target.value)}
+            placeholder="z. B. 20-00-1234"
             disabled={isBusy}
           />
         </label>

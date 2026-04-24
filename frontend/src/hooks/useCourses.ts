@@ -18,8 +18,16 @@ export function useCourses() {
       abbreviation: course.abbreviation,
       cp: course.cp,
       categoryId: course.category_id,
+      courseNumber: course.course_number,
       isActive: course.is_active,
       category: course.category_id ? categoryMap.get(course.category_id) ?? null : null,
+      exam: course.exam
+        ? {
+            date: course.exam.date,
+            timeFrom: course.exam.time_from,
+            timeTo: course.exam.time_to
+          }
+        : null,
       appointments: course.appointments.map((appointment, index) => ({
         id: createAppointmentId(course.id, appointment, index),
         courseId: course.id,

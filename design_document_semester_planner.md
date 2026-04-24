@@ -1,7 +1,7 @@
 # Designdokument: Stundenplan-App
 
-**Version:** 2.0  
-**Datum:** 23. April 2026  
+**Version:** 2.1  
+**Datum:** 24. April 2026  
 **Sprache der UI:** Deutsch  
 **Deployment:** Lokal via Docker oder als oeffentlicher, anonymer Share-Dienst  
 
@@ -63,8 +63,10 @@ Die Anwendung besteht weiterhin aus drei Containern, aber die Verantwortlichkeit
 ### 3.1 Browser-Verantwortung
 
 - Planner Store und lokale Entwurfswiederaufnahme
-- Kategorien, Kurse, Termine, `is_active`
+- Kategorien, Kurse, Kursnummern, Prüfungen, Termine, `is_active`
 - TUCaN-Parsing mit Live-Preview
+- Excel-Import fuer Prüfungen mit Preview und Matching
+- Konfliktbewertung zwischen aktiven Prüfungen
 - AES-GCM-Verschluesselung und Entschluesselung
 - Acht-Wort-Code-Generierung
 - Ableitung von Locator und Schluessel aus dem vollen Code
@@ -88,7 +90,7 @@ Der Browser verwendet einen Snapshot im Export-Stil als Klartext-Payload, bevor 
 
 ```json
 {
-  "export_version": "2.0",
+  "export_version": "2.1",
   "settings": {},
   "categories": [
     { "id": "uuid", "name": "Seminar", "color": "#6366F1" }
@@ -100,7 +102,13 @@ Der Browser verwendet einen Snapshot im Export-Stil als Klartext-Payload, bevor 
       "abbreviation": "ITS",
       "cp": 6,
       "category_id": "uuid-or-null",
+      "course_number": "20-00-1234",
       "is_active": true,
+      "exam": {
+        "date": "2026-07-10",
+        "time_from": "10:00",
+        "time_to": "12:00"
+      },
       "appointments": [
         {
           "date": "2026-04-13",
@@ -115,7 +123,7 @@ Der Browser verwendet einen Snapshot im Export-Stil als Klartext-Payload, bevor 
 }
 ```
 
-`settings` bleibt absichtlich leer, damit keine geraetelokalen UI-Einstellungen geteilt werden.
+`settings` bleibt absichtlich leer, damit keine geraetelokalen UI-Einstellungen geteilt werden. Rohe Excel-Importdaten werden nicht gespeichert; nur die normalisierte gespeicherte Prüfung pro Kurs landet im Snapshot.
 
 ### 4.2 Device-lokale Praeferenzen
 
@@ -178,8 +186,12 @@ Es existieren keine Tabellen mehr fuer Kategorien, Kurse, Termine oder Settings 
 
 ### 5.4 Versionierung
 
-- `payload_version = 2.0`
+- `payload_version = 2.1`
 - `crypto_version = aes-256-gcm+pbkdf2-sha256-v1`
+
+Legacy-Hinweis:
+
+- Clients akzeptieren weiterhin `payload_version = 2.0` und normalisieren alte Snapshots ohne `course_number` oder `exam` auf das aktuelle Modell.
 
 ---
 
@@ -242,6 +254,8 @@ Der Provider haelt:
 - `resumePersistedDraft()`
 - `createCategory()` / `updateCategory()` / `deleteCategory()`
 - `createCourse()` / `updateCourse()` / `deleteCourse()` / `toggleCourse()`
+- `setCourseNumber()`
+- `setCourseExam()` / `clearCourseExam()` / `applyImportedExams()`
 - `createShare()`
 - `extendShare()`
 - `openShare(code)`
@@ -253,6 +267,7 @@ Der Provider haelt:
 3. `Create code` speichert einen Snapshot ohne Parent.
 4. `Extend code` speichert einen Snapshot mit `parent_snapshot_id = currentShareId`.
 5. Nach dem Speichern zeigt die UI den neuen Acht-Wort-Code explizit an.
+6. Die Prüfungsseite trennt Excel-Import, gespeicherte Prüfungen und manuelle Pflege von der Kalenderansicht.
 
 ---
 

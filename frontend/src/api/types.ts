@@ -14,13 +14,21 @@ export type SnapshotAppointment = {
   type: AppointmentType;
 };
 
+export type SnapshotExam = {
+  date: string;
+  time_from: string;
+  time_to: string;
+};
+
 export type SnapshotCourse = {
   id: string;
   name: string;
   abbreviation: string;
   cp: number;
   category_id: string | null;
+  course_number: string | null;
   is_active: boolean;
+  exam: SnapshotExam | null;
   appointments: SnapshotAppointment[];
 };
 
@@ -41,14 +49,22 @@ export type PlannerAppointment = {
   type: AppointmentType;
 };
 
+export type PlannerExam = {
+  date: string;
+  timeFrom: string;
+  timeTo: string;
+};
+
 export type PlannerCourse = {
   id: string;
   name: string;
   abbreviation: string;
   cp: number;
   categoryId: string | null;
+  courseNumber: string | null;
   isActive: boolean;
   category: SnapshotCategory | null;
+  exam: PlannerExam | null;
   appointments: PlannerAppointment[];
 };
 
@@ -81,7 +97,8 @@ export type UiPreferencesPatch = {
 
 export type SettingsPatch = UiPreferencesPatch;
 
-export const plannerSnapshotVersion = "2.0";
+export const plannerSnapshotVersion = "2.1";
+export const supportedPlannerSnapshotVersions = ["2.0", plannerSnapshotVersion] as const;
 export const shareCryptoVersion = "aes-256-gcm+pbkdf2-sha256-v1";
 
 export type ShareEnvelope = {
@@ -187,6 +204,43 @@ function normalizeAppointment(input: unknown, index: number): SnapshotAppointmen
   };
 }
 
+function normalizeNullableText(input: unknown): string | null {
+  if (typeof input !== "string") {
+    return null;
+  }
+
+  const normalized = input.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeExam(input: unknown, index: number): SnapshotExam | null {
+  if (input == null) {
+    return null;
+  }
+
+  if (!isRecord(input)) {
+    throw new Error(`Prüfung ${index + 1} ist ungültig.`);
+  }
+
+  if (typeof input.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(input.date)) {
+    throw new Error(`Prüfung ${index + 1} hat kein gültiges Datum.`);
+  }
+
+  if (typeof input.time_from !== "string" || !/^\d{2}:\d{2}$/.test(input.time_from)) {
+    throw new Error(`Prüfung ${index + 1} hat keine gültige Startzeit.`);
+  }
+
+  if (typeof input.time_to !== "string" || !/^\d{2}:\d{2}$/.test(input.time_to)) {
+    throw new Error(`Prüfung ${index + 1} hat keine gültige Endzeit.`);
+  }
+
+  return {
+    date: input.date,
+    time_from: input.time_from,
+    time_to: input.time_to
+  };
+}
+
 function normalizeCourse(input: unknown, index: number, categoryIds: Set<string>): SnapshotCourse {
   if (!isRecord(input)) {
     throw new Error(`Kurs ${index + 1} ist ungültig.`);
@@ -210,6 +264,8 @@ function normalizeCourse(input: unknown, index: number, categoryIds: Set<string>
   }
 
   const categoryId = typeof input.category_id === "string" && categoryIds.has(input.category_id) ? input.category_id : null;
+  const courseNumber = normalizeNullableText(input.course_number);
+  const exam = normalizeExam(input.exam, index);
   const appointments = Array.isArray(input.appointments)
     ? input.appointments.map((appointment, appointmentIndex) => normalizeAppointment(appointment, appointmentIndex))
     : [];
@@ -220,7 +276,9 @@ function normalizeCourse(input: unknown, index: number, categoryIds: Set<string>
     abbreviation: input.abbreviation.trim(),
     cp,
     category_id: categoryId,
+    course_number: courseNumber,
     is_active: input.is_active !== false,
+    exam,
     appointments
   };
 }

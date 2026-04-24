@@ -23,8 +23,9 @@ The public runtime is now encrypted-only:
 ## Features
 
 - Code-first entry flow: create a new planner, open an existing code, or resume a local draft
-- Local planner editing for categories, courses, appointments, and active course selection
+- Local planner editing for categories, courses, course numbers, exams, appointments, and active course selection
 - Local TUCaN parsing with live preview before saving a course
+- Local Excel import for exams with preview, matching, and ambiguity handling before saving
 - Local ICS export from decrypted planner state
 - Immutable share snapshots with explicit Create code and Extend code actions
 - Device-local UI preferences for dark mode, full-name display, and calendar filters
@@ -35,7 +36,7 @@ The public runtime is now encrypted-only:
 ### Shared in the encrypted snapshot
 
 - Categories
-- Courses
+- Courses, including `course_number` and one optional saved `exam` per course
 - Appointments
 - `is_active` per course
 
@@ -49,6 +50,8 @@ The public runtime is now encrypted-only:
 ### Server never stores in plaintext
 
 - Course names and abbreviations
+- Course numbers
+- Exam dates or times
 - Appointment dates, times, rooms, or types
 - Category names or colors
 - Active course selection
@@ -249,6 +252,26 @@ Rules:
 - `*` controls lecture/tutorial type mapping
 - The `Lehrende` column is ignored
 - Markdown links in room cells are reduced to plain text
+
+## Exam Import Format
+
+The exam importer reads the first worksheet of an Excel file in the browser and expects these exact column headers:
+
+- `Wochentag`
+- `Datum`
+- `Beginn`
+- `Ende`
+- `Terminart (Veranstaltungsart)`
+- `DozentIn`
+- `Veranstaltungsname`
+
+Import rules:
+
+- `Datum`, `Beginn`, `Ende`, and `Veranstaltungsname` are required per row.
+- The importer extracts round and square bracket contents from `Veranstaltungsname`.
+- Extracted values are matched against normalized course numbers.
+- Unmatched or ambiguous rows stay in the preview and are not saved automatically.
+- Only the normalized saved exam per course is persisted; raw workbook rows are not stored.
 
 ## Useful Commands
 
