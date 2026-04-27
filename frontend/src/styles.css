@@ -1016,7 +1016,8 @@ textarea:disabled {
     pointer-events: auto;
   }
 
-  .responsive-sidebar {
+  .responsive-sidebar,
+  .responsive-sidebar:hover {
     position: fixed;
     top: 0;
     bottom: 0;
@@ -1029,7 +1030,8 @@ textarea:disabled {
     transition: transform 0.22s ease;
   }
 
-  .responsive-sidebar.open {
+  .responsive-sidebar.open,
+  .responsive-sidebar.open:hover {
     transform: translateX(0);
   }
 
