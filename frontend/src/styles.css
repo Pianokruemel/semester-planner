@@ -398,8 +398,13 @@ textarea:disabled {
   gap: 0.5rem;
 }
 
+
 .close-sidebar {
   display: none;
+}
+
+.responsive-sidebar.open .close-sidebar {
+  display: inline-flex;
 }
 
 .sidebar-card,
