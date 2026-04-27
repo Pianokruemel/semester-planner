@@ -1077,18 +1077,22 @@ textarea:disabled {
     border-radius: var(--radius-md);
   }
 
-  .responsive-sidebar {
+  .responsive-sidebar,
+  .responsive-sidebar:hover {
     top: auto;
     left: 0;
     right: 0;
     bottom: 0;
     width: 100%;
-    max-height: 84vh;
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    height: 100vh;
+    height: 100dvh;
+    max-height: none;
+    border-radius: 0;
     transform: translateY(105%);
   }
 
-  .responsive-sidebar.open {
+  .responsive-sidebar.open,
+  .responsive-sidebar.open:hover {
     transform: translateY(0);
   }
 
