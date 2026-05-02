@@ -119,8 +119,11 @@ export function CatalogPage() {
   const { importCatalogCourse } = usePlannerStore();
   const [query, setQuery] = useState("");
   const [courses, setCourses] = useState<CatalogCourseCard[]>([]);
+  const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
   const [selectedCourse, setSelectedCourse] = useState<CatalogCourseDetail | null>(null);
   const [isSearching, setIsSearching] = useState(false);
+  const [isDetailLoading, setIsDetailLoading] = useState(false);
+  const [isMobileDetailOpen, setIsMobileDetailOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [errorText, setErrorText] = useState("");
   const [isCpPromptVisible, setIsCpPromptVisible] = useState(false);
@@ -140,10 +143,28 @@ export function CatalogPage() {
     return () => window.clearTimeout(timer);
   }, [query]);
 
+  useEffect(() => {
+    if (!isMobileDetailOpen) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isMobileDetailOpen]);
+
   async function openDetail(courseId: string) {
+    setSelectedCourseId(courseId);
     setErrorText("");
     setIsCpPromptVisible(false);
     setCpOverride("6");
+    setIsDetailLoading(true);
+    if (window.matchMedia?.("(max-width: 1000px)").matches) {
+      setIsMobileDetailOpen(true);
+    }
     try {
       const course = await fetchCatalogCourse(courseId);
       const groups = smallGroupsFromCourse(course);
@@ -151,6 +172,8 @@ export function CatalogPage() {
       setSelectedSubgroupKey(groups[0]?.key ?? null);
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : "Katalogkurs konnte nicht geladen werden.");
+    } finally {
+      setIsDetailLoading(false);
     }
   }
 
@@ -195,6 +218,166 @@ export function CatalogPage() {
   }));
   const selectedSubgroup = smallGroups.find((group) => group.key === selectedSubgroupKey) ?? null;
 
+  const detailContent = selectedCourse ? (
+    <>
+      <div className="page-section catalog-detail-summary">
+        <div>
+          <h2>{selectedCourse.title}</h2>
+          <p className="page-intro">
+            {[selectedCourse.course_number, selectedCourse.semester_key, selectedCourse.faculty].filter(Boolean).join(" | ")}
+          </p>
+          <p className="page-intro">{selectedCourse.path.join(" / ")}</p>
+          <p className="page-intro">{selectedCourse.instructors.join(", ") || "Keine Lehrenden erfasst"}</p>
+          <p className="page-intro">CP: {selectedCourse.cp && selectedCourse.cp > 0 ? selectedCourse.cp : "fehlt"}</p>
+        </div>
+        <div className="catalog-import-actions">
+          {isCpPromptVisible ? (
+            <label>
+              CP
+              <input
+                type="number"
+                min={1}
+                value={cpOverride}
+                onChange={(event) => setCpOverride(event.target.value)}
+                disabled={isImporting}
+              />
+            </label>
+          ) : null}
+          <button type="button" className="primary-btn" onClick={() => void importSelectedCourse()} disabled={isImporting}>
+            {isImporting ? "Importiere..." : isCpPromptVisible ? "CP bestätigen und hinzufügen" : "Zum Plan hinzufügen"}
+          </button>
+        </div>
+      </div>
+      {smallGroups.length > 0 ? (
+        <div className="catalog-subgroup-section">
+          <h3>Übungsgruppe</h3>
+          <div className="catalog-subgroup-list">
+            <label className={`catalog-subgroup-option ${selectedSubgroupKey === null ? "selected" : ""}`}>
+              <input
+                type="radio"
+                name="catalog-subgroup"
+                checked={selectedSubgroupKey === null}
+                onChange={() => setSelectedSubgroupKey(null)}
+              />
+              <span>
+                <strong>Nur Vorlesung</strong>
+                <small>Keine Übung importieren</small>
+              </span>
+            </label>
+            {smallGroups.map((group) => (
+              <label key={group.key} className={`catalog-subgroup-option ${selectedSubgroupKey === group.key ? "selected" : ""}`}>
+                <input
+                  type="radio"
+                  name="catalog-subgroup"
+                  checked={selectedSubgroupKey === group.key}
+                  onChange={() => setSelectedSubgroupKey(group.key)}
+                />
+                <span>
+                  <strong>{group.title}</strong>
+                  <small>{group.schedule || "Termine siehe Detailtabelle"}</small>
+                  <small>{group.instructors.join(", ") || "Keine Lehrenden erfasst"}</small>
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      <div className="table-scroll catalog-appointment-table">
+        <table className="exam-preview-table">
+          <thead>
+            <tr>
+              <th>Datum</th>
+              <th>Zeit</th>
+              <th>Raum</th>
+              <th>Typ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {selectedCourse.appointments.map((appointment) => (
+              <tr key={appointment.id}>
+                <td>{appointment.date}</td>
+                <td>
+                  {appointment.time_from}-{appointment.time_to}
+                </td>
+                <td>{appointment.room}</td>
+                <td>{appointment.type}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="catalog-appointment-cards">
+        {selectedCourse.appointments.map((appointment) => (
+          <article key={appointment.id} className="catalog-appointment-card">
+            <strong>{appointment.date}</strong>
+            <span>
+              {appointment.time_from}-{appointment.time_to}
+            </span>
+            <span>{appointment.room}</span>
+            <small>{appointment.type}</small>
+          </article>
+        ))}
+      </div>
+      {selectedSubgroup ? (
+        <>
+          <div className="table-scroll catalog-subgroup-appointments">
+            <table className="exam-preview-table">
+              <thead>
+                <tr>
+                  <th>Übungsgruppe</th>
+                  <th>Datum</th>
+                  <th>Zeit</th>
+                  <th>Raum</th>
+                  <th>Lehrende</th>
+                </tr>
+              </thead>
+              <tbody>
+                {selectedSubgroup.appointments.length > 0 ? (
+                  selectedSubgroup.appointments.map((appointment, index) => (
+                    <tr key={`${selectedSubgroup.key}-${appointment.date}-${appointment.time_from}-${index}`}>
+                      <td>{selectedSubgroup.title}</td>
+                      <td>{appointment.date}</td>
+                      <td>
+                        {appointment.time_from}-{appointment.time_to}
+                      </td>
+                      <td>{appointment.room}</td>
+                      <td>{appointmentInstructors(selectedSubgroup, appointment.position ?? index).join(", ") || "Keine Lehrenden erfasst"}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td>{selectedSubgroup.title}</td>
+                    <td colSpan={4}>{selectedSubgroup.schedule || "Keine Termine erfasst"}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="catalog-appointment-cards catalog-subgroup-card-list">
+            {selectedSubgroup.appointments.length > 0 ? (
+              selectedSubgroup.appointments.map((appointment, index) => (
+                <article key={`${selectedSubgroup.key}-${appointment.date}-${appointment.time_from}-${index}`} className="catalog-appointment-card">
+                  <strong>{selectedSubgroup.title}</strong>
+                  <span>{appointment.date}</span>
+                  <span>
+                    {appointment.time_from}-{appointment.time_to}
+                  </span>
+                  <span>{appointment.room}</span>
+                  <small>{appointmentInstructors(selectedSubgroup, appointment.position ?? index).join(", ") || "Keine Lehrenden erfasst"}</small>
+                </article>
+              ))
+            ) : (
+              <article className="catalog-appointment-card">
+                <strong>{selectedSubgroup.title}</strong>
+                <span>{selectedSubgroup.schedule || "Keine Termine erfasst"}</span>
+              </article>
+            )}
+          </div>
+        </>
+      ) : null}
+    </>
+  ) : null;
+
   return (
     <div className="catalog-layout">
       <section className="page-card catalog-search-panel">
@@ -212,7 +395,12 @@ export function CatalogPage() {
         {errorText ? <p className="error-text">{errorText}</p> : null}
         <div className="catalog-result-list">
           {courses.map((course) => (
-            <button key={course.id} type="button" className="catalog-result" onClick={() => void openDetail(course.id)}>
+            <button
+              key={course.id}
+              type="button"
+              className={`catalog-result ${selectedCourseId === course.id ? "selected" : ""}`}
+              onClick={() => void openDetail(course.id)}
+            >
               <strong>{course.title}</strong>
               <span>{[course.course_number, course.semester_key, course.faculty].filter(Boolean).join(" | ")}</span>
               <span>{course.instructors.join(", ") || "Keine Lehrenden erfasst"}</span>
@@ -224,134 +412,17 @@ export function CatalogPage() {
         </div>
       </section>
 
-      <section className="page-card catalog-detail-panel">
-        {selectedCourse ? (
-          <>
-            <div className="page-section">
-              <div>
-                <h2>{selectedCourse.title}</h2>
-                <p className="page-intro">
-                  {[selectedCourse.course_number, selectedCourse.semester_key, selectedCourse.faculty].filter(Boolean).join(" | ")}
-                </p>
-                <p className="page-intro">{selectedCourse.path.join(" / ")}</p>
-                <p className="page-intro">{selectedCourse.instructors.join(", ") || "Keine Lehrenden erfasst"}</p>
-                <p className="page-intro">CP: {selectedCourse.cp && selectedCourse.cp > 0 ? selectedCourse.cp : "fehlt"}</p>
-              </div>
-              <div className="catalog-import-actions">
-                {isCpPromptVisible ? (
-                  <label>
-                    CP
-                    <input
-                      type="number"
-                      min={1}
-                      value={cpOverride}
-                      onChange={(event) => setCpOverride(event.target.value)}
-                      disabled={isImporting}
-                    />
-                  </label>
-                ) : null}
-                <button type="button" className="primary-btn" onClick={() => void importSelectedCourse()} disabled={isImporting}>
-                  {isImporting ? "Importiere..." : isCpPromptVisible ? "CP bestätigen und hinzufügen" : "Zum Plan hinzufügen"}
-                </button>
-              </div>
-            </div>
-            {smallGroups.length > 0 ? (
-              <div className="catalog-subgroup-section">
-                <h3>Übungsgruppe</h3>
-                <div className="catalog-subgroup-list">
-                  <label className={`catalog-subgroup-option ${selectedSubgroupKey === null ? "selected" : ""}`}>
-                    <input
-                      type="radio"
-                      name="catalog-subgroup"
-                      checked={selectedSubgroupKey === null}
-                      onChange={() => setSelectedSubgroupKey(null)}
-                    />
-                    <span>
-                      <strong>Nur Vorlesung</strong>
-                      <small>Keine Übung importieren</small>
-                    </span>
-                  </label>
-                  {smallGroups.map((group) => (
-                    <label
-                      key={group.key}
-                      className={`catalog-subgroup-option ${selectedSubgroupKey === group.key ? "selected" : ""}`}
-                    >
-                      <input
-                        type="radio"
-                        name="catalog-subgroup"
-                        checked={selectedSubgroupKey === group.key}
-                        onChange={() => setSelectedSubgroupKey(group.key)}
-                      />
-                      <span>
-                        <strong>{group.title}</strong>
-                        <small>{group.schedule || "Termine siehe Detailtabelle"}</small>
-                        <small>{group.instructors.join(", ") || "Keine Lehrenden erfasst"}</small>
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-            <div className="table-scroll">
-              <table className="exam-preview-table">
-                <thead>
-                  <tr>
-                    <th>Datum</th>
-                    <th>Zeit</th>
-                    <th>Raum</th>
-                    <th>Typ</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {selectedCourse.appointments.map((appointment) => (
-                    <tr key={appointment.id}>
-                      <td>{appointment.date}</td>
-                      <td>
-                        {appointment.time_from}-{appointment.time_to}
-                      </td>
-                      <td>{appointment.room}</td>
-                      <td>{appointment.type}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {selectedSubgroup ? (
-              <div className="table-scroll catalog-subgroup-appointments">
-                <table className="exam-preview-table">
-                  <thead>
-                    <tr>
-                      <th>Übungsgruppe</th>
-                      <th>Datum</th>
-                      <th>Zeit</th>
-                      <th>Raum</th>
-                      <th>Lehrende</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {selectedSubgroup.appointments.length > 0 ? (
-                      selectedSubgroup.appointments.map((appointment, index) => (
-                        <tr key={`${selectedSubgroup.key}-${appointment.date}-${appointment.time_from}-${index}`}>
-                          <td>{selectedSubgroup.title}</td>
-                          <td>{appointment.date}</td>
-                          <td>
-                            {appointment.time_from}-{appointment.time_to}
-                          </td>
-                          <td>{appointment.room}</td>
-                          <td>{appointmentInstructors(selectedSubgroup, appointment.position ?? index).join(", ") || "Keine Lehrenden erfasst"}</td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td>{selectedSubgroup.title}</td>
-                        <td colSpan={4}>{selectedSubgroup.schedule || "Keine Termine erfasst"}</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            ) : null}
-          </>
+      <section className={`page-card catalog-detail-panel ${isMobileDetailOpen ? "mobile-open" : ""}`} aria-live="polite">
+        <div className="catalog-detail-mobile-head">
+          <button type="button" onClick={() => setIsMobileDetailOpen(false)}>
+            Zurück
+          </button>
+          <strong>Kursdetails</strong>
+        </div>
+        {isDetailLoading ? (
+          <p className="page-intro">Lade Kursdetails...</p>
+        ) : detailContent ? (
+          detailContent
         ) : (
           <>
             <h2>Kurs auswählen</h2>

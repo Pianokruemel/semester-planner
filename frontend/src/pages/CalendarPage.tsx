@@ -24,6 +24,8 @@ type Props = {
 type CalendarEvent = {
   id: string;
   title: string;
+  label: string;
+  details: string;
   start: Date;
   end: Date;
   courseId: string;
@@ -91,6 +93,15 @@ function courseCatalogBadge(course: PlannerCourse) {
   }
 
   return "";
+}
+
+function CalendarEventBubble({ event }: { event: CalendarEvent }) {
+  return (
+    <div className="calendar-event-bubble">
+      <strong>{event.label}</strong>
+      {event.details ? <span>{event.details}</span> : null}
+    </div>
+  );
 }
 
 export function CalendarPage({ showFullName }: Props) {
@@ -251,6 +262,8 @@ export function CalendarPage({ showFullName }: Props) {
             return {
               id: appointment.id,
               title: details ? `${label} - ${details}` : label,
+              label,
+              details,
               start,
               end,
               courseId: course.id,
@@ -598,6 +611,9 @@ export function CalendarPage({ showFullName }: Props) {
                 cursor: "pointer"
               }
             })}
+            components={{
+              event: CalendarEventBubble
+            }}
           />
         )}
 

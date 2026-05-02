@@ -654,12 +654,46 @@ textarea:disabled {
 }
 
 .rbc-event {
+  min-width: 0;
+  overflow: hidden;
   box-shadow: 0 6px 16px rgba(2, 6, 23, 0.2);
 }
 
 .rbc-event-content {
+  min-width: 0;
+  overflow: hidden;
   font-weight: 600;
   line-height: 1.25;
+}
+
+.calendar-event-bubble {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  flex-direction: column;
+  gap: 0.08rem;
+  overflow: hidden;
+}
+
+.calendar-event-bubble strong,
+.calendar-event-bubble span {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendar-event-bubble strong {
+  font-size: 0.82rem;
+  line-height: 1.15;
+}
+
+.calendar-event-bubble span {
+  font-size: 0.72rem;
+  line-height: 1.2;
+  opacity: 0.92;
 }
 
 .dark {
@@ -870,6 +904,11 @@ textarea:disabled {
   min-height: 24rem;
 }
 
+.catalog-detail-mobile-head,
+.catalog-appointment-cards {
+  display: none;
+}
+
 .catalog-search-panel label,
 .catalog-import-actions label {
   display: flex;
@@ -901,14 +940,45 @@ textarea:disabled {
   display: grid;
   gap: 0.25rem;
   width: 100%;
+  min-width: 0;
+  overflow: hidden;
   text-align: left;
   border: var(--border-soft);
+  border-radius: var(--radius-sm);
   background: var(--control-bg);
+  padding: 0.78rem;
+}
+
+.catalog-result.selected {
+  border-color: rgba(37, 99, 235, 0.42);
+  background: rgba(59, 130, 246, 0.12);
+}
+
+.catalog-result strong {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .catalog-result span {
+  min-width: 0;
+  overflow: hidden;
   color: var(--text-subtle);
   font-size: 0.9rem;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catalog-detail-summary {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: flex-start;
 }
 
 .catalog-import-actions {
@@ -1113,6 +1183,116 @@ textarea:disabled {
 @media (max-width: 1000px) {
   .catalog-layout {
     grid-template-columns: 1fr;
+  }
+
+  .catalog-detail-panel,
+  .catalog-detail-panel:hover {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    display: block;
+    min-height: 100vh;
+    min-height: 100dvh;
+    margin: 0;
+    overflow-y: auto;
+    border-radius: 0;
+    padding: 0 1rem 5.8rem;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(100%);
+    visibility: hidden;
+    transition: transform 0.22s ease, opacity 0.22s ease, visibility 0.22s ease;
+  }
+
+  .catalog-detail-panel.mobile-open,
+  .catalog-detail-panel.mobile-open:hover {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+    visibility: visible;
+  }
+
+  .catalog-detail-mobile-head {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.8rem;
+    margin: 0 -1rem 1rem;
+    padding: 0.85rem 1rem;
+    backdrop-filter: blur(var(--blur-lg));
+    -webkit-backdrop-filter: blur(var(--blur-lg));
+    background: var(--glass-bg);
+    border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+  }
+
+  .catalog-detail-mobile-head strong {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-subtle);
+    font-size: 0.9rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .catalog-detail-summary {
+    flex-direction: column;
+  }
+
+  .catalog-import-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    align-items: stretch;
+    margin: 1rem -1rem -5.8rem;
+    padding: 0.85rem 1rem calc(0.85rem + env(safe-area-inset-bottom));
+    backdrop-filter: blur(var(--blur-lg));
+    -webkit-backdrop-filter: blur(var(--blur-lg));
+    background: var(--glass-bg);
+    border-top: 1px solid rgba(148, 163, 184, 0.22);
+  }
+
+  .catalog-import-actions button,
+  .catalog-import-actions label {
+    flex: 1 1 100%;
+  }
+
+  .catalog-appointment-table,
+  .catalog-subgroup-appointments {
+    display: none;
+  }
+
+  .catalog-appointment-cards {
+    display: grid;
+    gap: 0.6rem;
+  }
+
+  .catalog-appointment-card {
+    display: grid;
+    gap: 0.18rem;
+    min-width: 0;
+    border: var(--border-soft);
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.42);
+    padding: 0.72rem;
+  }
+
+  .catalog-appointment-card strong,
+  .catalog-appointment-card span,
+  .catalog-appointment-card small {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .catalog-appointment-card small {
+    color: var(--text-subtle);
+    line-height: 1.35;
+  }
+
+  .catalog-subgroup-card-list {
+    margin-top: 0.85rem;
   }
 
   .calendar-layout {

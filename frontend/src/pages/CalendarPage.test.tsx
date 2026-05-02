@@ -213,4 +213,28 @@ describe("CalendarPage week view", () => {
     expect(screen.getByText("27.04. - 01.05.2026")).toBeInTheDocument();
     expect(lastCalendarProps?.view).toBe("work_week");
   });
+
+  it("passes structured event text to a custom calendar event renderer", () => {
+    setup({
+      courses: [
+        makeCourse({
+          name: "Eine extrem lange aus dem Katalog importierte Veranstaltung",
+          abbreviation: "SehrLangerKursname",
+          appointments: [makeAppointment({ id: "long-title", room: "S1|01 A001" })]
+        })
+      ]
+    });
+
+    renderCalendarPage();
+
+    const events = lastCalendarProps?.events as Array<Record<string, string>>;
+    const components = lastCalendarProps?.components as Record<string, unknown>;
+
+    expect(events[0]).toMatchObject({
+      title: "SehrLangerKursname - 08:00-09:30 | S1|01 A001 | Vorlesung",
+      label: "SehrLangerKursname",
+      details: "08:00-09:30 | S1|01 A001 | Vorlesung"
+    });
+    expect(components.event).toEqual(expect.any(Function));
+  });
 });
