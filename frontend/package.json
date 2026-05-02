@@ -4,6 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "pretest": "npm --prefix ../packages/shared run build",
+    "prelint": "npm --prefix ../packages/shared run build",
+    "prebuild": "npm --prefix ../packages/shared run build",
     "test": "vitest run --environment jsdom",
     "lint": "tsc -b --pretty false",
     "dev": "vite",
@@ -16,11 +19,10 @@
   "type": "module",
   "private": true,
   "dependencies": {
-    "@scure/bip39": "^2.2.0",
+    "@semester-planner/shared": "file:../packages/shared",
     "axios": "^1.14.0",
     "clsx": "^2.1.1",
     "dayjs": "^1.11.20",
-    "qrcode.react": "^4.2.0",
     "react": "^19.2.4",
     "react-big-calendar": "^1.19.4",
     "react-dom": "^19.2.4",

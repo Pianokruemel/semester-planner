@@ -1,74 +1,71 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { createShareEnvelope, fetchShareEnvelope, isShareLocatorConflict, isShareOpenFailure } from "../api/shares";
+import {
+  BackendPlan,
+  CoursePayload,
+  createCategory as createCategoryRequest,
+  createCourse as createCourseRequest,
+  createPlan as createPlanRequest,
+  deleteCategory as deleteCategoryRequest,
+  deleteCourse as deleteCourseRequest,
+  deleteExam as deleteExamRequest,
+  fetchPlan,
+  importCatalogCourse as importCatalogCourseRequest,
+  patchCourse,
+  putExam,
+  refreshCatalogCourse as refreshCatalogCourseRequest,
+  updateCategory as updateCategoryRequest,
+  updateCourse as updateCourseRequest,
+  updatePlanName
+} from "../api/plans";
 import {
   PlannerSnapshot,
-  SnapshotAppointment,
   SnapshotCategory,
   SnapshotCourse,
   SnapshotExam,
   UiPreferences,
   UiPreferencesPatch,
-  createEmptyPlannerSnapshot,
   defaultUiPreferences,
-  isPlannerSnapshotEmpty,
   mergeUiPreferencesPatch,
-  normalizePlannerSnapshot,
-  normalizeUiPreferences,
-  plannerSnapshotFingerprint
+  normalizeUiPreferences
 } from "../api/types";
-import { decryptPlannerSnapshot, deriveLocator, encryptPlannerSnapshot, generateShareCode } from "./shareCrypto";
 
-const plannerDraftStorageKey = "semester-planner:draft:v1";
+const planIdStorageKey = "semester-planner:plan-id";
+const obsoleteDraftStorageKey = "semester-planner:draft:v1";
 const uiPreferencesStorageKey = "semester-planner:ui-preferences:v1";
-
-type PlannerSession = {
-  snapshot: PlannerSnapshot;
-  currentShareId: string | null;
-  savedFingerprint: string | null;
-  updatedAt: string;
-};
-
-type CourseMutationInput = {
-  name: string;
-  abbreviation: string;
-  cp: number;
-  category_id: string | null;
-  course_number?: string | null;
-  exam?: SnapshotExam | null;
-  appointments: SnapshotAppointment[];
-};
 
 type PlannerContextValue = {
   snapshot: PlannerSnapshot | null;
+  planId: string | null;
+  planName: string | null;
   uiPreferences: UiPreferences;
   hasCurrentPlanner: boolean;
   hasPersistedDraft: boolean;
   hasUnsavedChanges: boolean;
-  currentShareId: string | null;
-  startNewPlanner: () => void;
+  isLoadingPlan: boolean;
+  startNewPlanner: () => Promise<void>;
   resumePersistedDraft: () => void;
   updateUiPreferences: (patch: UiPreferencesPatch) => void;
-  createCategory: (payload: { name: string; color: string }) => SnapshotCategory;
-  updateCategory: (payload: { id: string; name: string; color: string }) => SnapshotCategory;
-  deleteCategory: (payload: { id: string; confirm?: boolean }) => void;
-  createCourse: (payload: CourseMutationInput) => SnapshotCourse;
-  updateCourse: (id: string, payload: CourseMutationInput) => SnapshotCourse;
-  setCourseNumber: (id: string, courseNumber: string | null) => SnapshotCourse;
-  setCourseExam: (id: string, exam: SnapshotExam) => SnapshotCourse;
-  clearCourseExam: (id: string) => SnapshotCourse;
-  applyImportedExams: (payload: Array<{ courseId: string; exam: SnapshotExam }>) => SnapshotCourse[];
-  deleteCourse: (id: string) => void;
-  toggleCourse: (id: string) => SnapshotCourse;
-  createShare: () => Promise<{ code: string }>;
-  extendShare: () => Promise<{ code: string }>;
-  openShare: (code: string) => Promise<void>;
+  renamePlan: (name: string) => Promise<void>;
+  createCategory: (payload: { name: string; color: string }) => Promise<SnapshotCategory>;
+  updateCategory: (payload: { id: string; name: string; color: string }) => Promise<SnapshotCategory>;
+  deleteCategory: (payload: { id: string; confirm?: boolean }) => Promise<void>;
+  createCourse: (payload: CoursePayload) => Promise<SnapshotCourse>;
+  updateCourse: (id: string, payload: CoursePayload) => Promise<SnapshotCourse>;
+  setCourseNumber: (id: string, courseNumber: string | null) => Promise<SnapshotCourse>;
+  setCourseExam: (id: string, exam: SnapshotExam) => Promise<SnapshotCourse>;
+  clearCourseExam: (id: string) => Promise<SnapshotCourse>;
+  applyImportedExams: (payload: Array<{ courseId: string; exam: SnapshotExam }>) => Promise<SnapshotCourse[]>;
+  deleteCourse: (id: string) => Promise<void>;
+  toggleCourse: (id: string) => Promise<SnapshotCourse>;
+  refreshCatalogCourse: (id: string) => Promise<SnapshotCourse>;
+  importCatalogCourse: (payload: {
+    catalog_course_id: string;
+    category_id?: string | null;
+    abbreviation?: string;
+    cp_override?: number;
+    selected_subgroup_key?: string | null;
+  }) => Promise<{ courseId: string }>;
 };
-
-type UnknownRecord = Record<string, unknown>;
-
-function isRecord(value: unknown): value is UnknownRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function readJsonStorage(key: string): unknown {
   try {
@@ -79,85 +76,35 @@ function readJsonStorage(key: string): unknown {
   }
 }
 
-function normalizeStoredSession(input: unknown): PlannerSession | null {
-  if (!isRecord(input)) {
-    return null;
-  }
-
+function readStoredPlanId(): string | null {
   try {
-    return {
-      snapshot: normalizePlannerSnapshot(input.snapshot),
-      currentShareId: typeof input.currentShareId === "string" ? input.currentShareId : null,
-      savedFingerprint: typeof input.savedFingerprint === "string" ? input.savedFingerprint : null,
-      updatedAt: typeof input.updatedAt === "string" ? input.updatedAt : new Date().toISOString()
-    };
+    const value = window.localStorage.getItem(planIdStorageKey);
+    return value && value.trim().length > 0 ? value : null;
   } catch {
     return null;
   }
 }
 
-function ensureColor(color: string): string {
-  if (!/^#[0-9A-Fa-f]{6}$/.test(color)) {
-    throw new Error("Farbe muss als Hexwert vorliegen.");
+function ensurePlanId(planId: string | null): string {
+  if (!planId) {
+    throw new Error("Bitte zuerst eine Planung erstellen.");
   }
 
-  return color;
+  return planId;
 }
 
-function ensureSession(session: PlannerSession | null): PlannerSession {
-  if (!session) {
-    throw new Error("Bitte zuerst eine Planung erstellen oder öffnen.");
-  }
-
-  return session;
+function applyPlanStorage(plan: BackendPlan) {
+  window.localStorage.setItem(planIdStorageKey, plan.id);
+  window.localStorage.removeItem(obsoleteDraftStorageKey);
 }
 
-function ensureCoursePayload(session: PlannerSession, payload: CourseMutationInput): CourseMutationInput {
-  const name = payload.name.trim();
-  const abbreviation = payload.abbreviation.trim();
-  const courseNumber = typeof payload.course_number === "string" ? payload.course_number.trim() : "";
-
-  if (!name) {
-    throw new Error("Kursname darf nicht leer sein.");
+function findCourse(plan: BackendPlan | null, courseId: string): SnapshotCourse {
+  const course = plan?.courses.find((entry) => entry.id === courseId);
+  if (!course) {
+    throw new Error("Kurs nicht gefunden.");
   }
 
-  if (!abbreviation) {
-    throw new Error("Abkürzung darf nicht leer sein.");
-  }
-
-  if (!Number.isInteger(payload.cp) || payload.cp <= 0) {
-    throw new Error("CP müssen eine positive ganze Zahl sein.");
-  }
-
-  if (payload.category_id && !session.snapshot.categories.some((category) => category.id === payload.category_id)) {
-    throw new Error("Kategorie nicht gefunden.");
-  }
-
-  return {
-    name,
-    abbreviation,
-    cp: payload.cp,
-    category_id: payload.category_id,
-    course_number: payload.course_number === undefined ? undefined : courseNumber.length > 0 ? courseNumber : null,
-    exam: payload.exam,
-    appointments: payload.appointments
-  };
-}
-
-function ensureCourseExam(exam: SnapshotExam): SnapshotExam {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(exam.date)) {
-    throw new Error("Prüfungsdatum ist ungültig.");
-  }
-
-  if (!/^\d{2}:\d{2}$/.test(exam.time_from)) {
-    throw new Error("Prüfungsstart ist ungültig.");
-  }
-
-  if (!/^\d{2}:\d{2}$/.test(exam.time_to)) {
-    throw new Error("Prüfungsende ist ungültig.");
-  }
-
-  return exam;
+  return course;
 }
 
 const PlannerContext = createContext<PlannerContextValue | null>(null);
@@ -173,8 +120,9 @@ export class CategoryInUseError extends Error {
 }
 
 export function PlannerProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<PlannerSession | null>(() => normalizeStoredSession(readJsonStorage(plannerDraftStorageKey)));
-  const [persistedDraft, setPersistedDraft] = useState<PlannerSession | null>(session);
+  const [plan, setPlan] = useState<BackendPlan | null>(null);
+  const [planId, setPlanId] = useState<string | null>(() => readStoredPlanId());
+  const [isLoadingPlan, setIsLoadingPlan] = useState(Boolean(planId));
   const [uiPreferences, setUiPreferences] = useState<UiPreferences>(() =>
     normalizeUiPreferences(readJsonStorage(uiPreferencesStorageKey) ?? defaultUiPreferences)
   );
@@ -184,372 +132,188 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
   }, [uiPreferences]);
 
   useEffect(() => {
-    if (!session) {
+    if (!planId) {
+      setIsLoadingPlan(false);
+      setPlan(null);
       return;
     }
 
-    window.localStorage.setItem(plannerDraftStorageKey, JSON.stringify(session));
-    setPersistedDraft(session);
-  }, [session]);
+    let isCurrent = true;
+    setIsLoadingPlan(true);
+    void fetchPlan(planId)
+      .then((loadedPlan) => {
+        if (!isCurrent) {
+          return;
+        }
 
-  const hasUnsavedChanges = useMemo(() => {
-    if (!session) {
-      return false;
-    }
+        setPlan(loadedPlan);
+        applyPlanStorage(loadedPlan);
+      })
+      .catch(() => {
+        if (!isCurrent) {
+          return;
+        }
 
-    const fingerprint = plannerSnapshotFingerprint(session.snapshot);
-    return session.savedFingerprint ? fingerprint !== session.savedFingerprint : !isPlannerSnapshotEmpty(session.snapshot);
-  }, [session]);
+        window.localStorage.removeItem(planIdStorageKey);
+        setPlanId(null);
+        setPlan(null);
+      })
+      .finally(() => {
+        if (isCurrent) {
+          setIsLoadingPlan(false);
+        }
+      });
 
-  function updateSession(nextSession: PlannerSession) {
-    setSession({
-      ...nextSession,
-      snapshot: normalizePlannerSnapshot(nextSession.snapshot),
-      updatedAt: new Date().toISOString()
-    });
+    return () => {
+      isCurrent = false;
+    };
+  }, [planId]);
+
+  function setLoadedPlan(nextPlan: BackendPlan) {
+    setPlan(nextPlan);
+    setPlanId(nextPlan.id);
+    applyPlanStorage(nextPlan);
   }
 
-  function startNewPlanner() {
-    updateSession({
-      snapshot: createEmptyPlannerSnapshot(),
-      currentShareId: null,
-      savedFingerprint: null,
-      updatedAt: new Date().toISOString()
-    });
+  async function startNewPlanner() {
+    setLoadedPlan(await createPlanRequest());
   }
 
   function resumePersistedDraft() {
-    if (!persistedDraft) {
-      return;
+    const storedPlanId = readStoredPlanId();
+    if (storedPlanId) {
+      setPlanId(storedPlanId);
     }
-
-    updateSession(persistedDraft);
   }
 
   function updateUiPreferences(patch: UiPreferencesPatch) {
     setUiPreferences((current) => mergeUiPreferencesPatch(current, patch));
   }
 
-  function requireCourse(current: PlannerSession, id: string): SnapshotCourse {
-    const existing = current.snapshot.courses.find((course) => course.id === id);
-
-    if (!existing) {
-      throw new Error("Kurs nicht gefunden.");
-    }
-
-    return existing;
+  async function renamePlan(name: string) {
+    setLoadedPlan(await updatePlanName(ensurePlanId(planId), name));
   }
 
-  function updateCourseInSession(
-    current: PlannerSession,
-    id: string,
-    updater: (course: SnapshotCourse) => SnapshotCourse
-  ): SnapshotCourse {
-    const existing = requireCourse(current, id);
-    const updated = updater(existing);
-
-    updateSession({
-      ...current,
-      snapshot: {
-        ...current.snapshot,
-        courses: current.snapshot.courses.map((course) => (course.id === id ? updated : course))
-      }
-    });
-
-    return updated;
-  }
-
-  function createCategory(payload: { name: string; color: string }) {
-    const current = ensureSession(session);
-    const name = payload.name.trim();
-    if (!name) {
-      throw new Error("Name darf nicht leer sein.");
+  async function createCategory(payload: { name: string; color: string }) {
+    const nextPlan = await createCategoryRequest(ensurePlanId(planId), payload);
+    setLoadedPlan(nextPlan);
+    const category = nextPlan.categories.find((entry) => entry.name === payload.name) ?? nextPlan.categories[nextPlan.categories.length - 1];
+    if (!category) {
+      throw new Error("Kategorie konnte nicht erstellt werden.");
     }
-
-    if (current.snapshot.categories.some((category) => category.name.toLowerCase() === name.toLowerCase())) {
-      throw new Error("Kategorie existiert bereits.");
-    }
-
-    const category = {
-      id: crypto.randomUUID(),
-      name,
-      color: ensureColor(payload.color)
-    } satisfies SnapshotCategory;
-
-    updateSession({
-      ...current,
-      snapshot: {
-        ...current.snapshot,
-        categories: [...current.snapshot.categories, category]
-      }
-    });
 
     return category;
   }
 
-  function updateCategory(payload: { id: string; name: string; color: string }) {
-    const current = ensureSession(session);
-    const target = current.snapshot.categories.find((category) => category.id === payload.id);
-    if (!target) {
+  async function updateCategory(payload: { id: string; name: string; color: string }) {
+    const nextPlan = await updateCategoryRequest(ensurePlanId(planId), payload);
+    setLoadedPlan(nextPlan);
+    const category = nextPlan.categories.find((entry) => entry.id === payload.id);
+    if (!category) {
       throw new Error("Kategorie nicht gefunden.");
     }
 
-    const name = payload.name.trim();
-    if (!name) {
-      throw new Error("Name darf nicht leer sein.");
-    }
-
-    if (
-      current.snapshot.categories.some(
-        (category) => category.id !== payload.id && category.name.toLowerCase() === name.toLowerCase()
-      )
-    ) {
-      throw new Error("Kategorie existiert bereits.");
-    }
-
-    const updated = {
-      ...target,
-      name,
-      color: ensureColor(payload.color)
-    } satisfies SnapshotCategory;
-
-    updateSession({
-      ...current,
-      snapshot: {
-        ...current.snapshot,
-        categories: current.snapshot.categories.map((category) => (category.id === payload.id ? updated : category))
-      }
-    });
-
-    return updated;
+    return category;
   }
 
-  function deleteCategory(payload: { id: string; confirm?: boolean }) {
-    const current = ensureSession(session);
-    const affectedCourses = current.snapshot.courses.filter((course) => course.category_id === payload.id).map((course) => course.name);
-
+  async function deleteCategory(payload: { id: string; confirm?: boolean }) {
+    const affectedCourses = plan?.courses.filter((course) => course.category_id === payload.id).map((course) => course.name) ?? [];
     if (affectedCourses.length > 0 && !payload.confirm) {
       throw new CategoryInUseError(affectedCourses);
     }
 
-    updateSession({
-      ...current,
-      snapshot: {
-        ...current.snapshot,
-        categories: current.snapshot.categories.filter((category) => category.id !== payload.id),
-        courses: current.snapshot.courses.map((course) =>
-          course.category_id === payload.id ? { ...course, category_id: null } : course
-        )
-      }
-    });
+    setLoadedPlan(await deleteCategoryRequest(ensurePlanId(planId), payload.id));
   }
 
-  function createCourse(payload: CourseMutationInput) {
-    const current = ensureSession(session);
-    const input = ensureCoursePayload(current, payload);
-    const created = {
-      id: crypto.randomUUID(),
-      ...input,
-      course_number: input.course_number ?? null,
-      exam: input.exam ?? null,
-      is_active: true
-    } satisfies SnapshotCourse;
-
-    updateSession({
-      ...current,
-      snapshot: {
-        ...current.snapshot,
-        courses: [...current.snapshot.courses, created]
-      }
-    });
-
-    return created;
-  }
-
-  function updateCourse(id: string, payload: CourseMutationInput) {
-    const current = ensureSession(session);
-    const existing = requireCourse(current, id);
-    const input = ensureCoursePayload(current, payload);
-    const updated = {
-      ...existing,
-      ...input,
-      course_number: input.course_number === undefined ? existing.course_number : input.course_number,
-      exam: input.exam === undefined ? existing.exam : input.exam
-    } satisfies SnapshotCourse;
-
-    updateSession({
-      ...current,
-      snapshot: {
-        ...current.snapshot,
-        courses: current.snapshot.courses.map((course) => (course.id === id ? updated : course))
-      }
-    });
-
-    return updated;
-  }
-
-  function setCourseNumber(id: string, courseNumber: string | null) {
-    const current = ensureSession(session);
-    const normalizedCourseNumber = typeof courseNumber === "string" ? courseNumber.trim() : "";
-
-    return updateCourseInSession(current, id, (course) => ({
-      ...course,
-      course_number: normalizedCourseNumber.length > 0 ? normalizedCourseNumber : null
-    }));
-  }
-
-  function setCourseExam(id: string, exam: SnapshotExam) {
-    const current = ensureSession(session);
-    const normalizedExam = ensureCourseExam(exam);
-
-    return updateCourseInSession(current, id, (course) => ({
-      ...course,
-      exam: normalizedExam
-    }));
-  }
-
-  function clearCourseExam(id: string) {
-    const current = ensureSession(session);
-
-    return updateCourseInSession(current, id, (course) => ({
-      ...course,
-      exam: null
-    }));
-  }
-
-  function applyImportedExams(payload: Array<{ courseId: string; exam: SnapshotExam }>) {
-    const current = ensureSession(session);
-    const examByCourseId = new Map(payload.map((entry) => [entry.courseId, ensureCourseExam(entry.exam)]));
-
-    if (examByCourseId.size === 0) {
-      return [];
+  async function createCourse(payload: CoursePayload) {
+    const nextPlan = await createCourseRequest(ensurePlanId(planId), payload);
+    setLoadedPlan(nextPlan);
+    const course = nextPlan.courses.find((entry) => entry.name === payload.name) ?? nextPlan.courses[nextPlan.courses.length - 1];
+    if (!course) {
+      throw new Error("Kurs konnte nicht erstellt werden.");
     }
 
-    for (const courseId of examByCourseId.keys()) {
-      requireCourse(current, courseId);
+    return course;
+  }
+
+  async function updateCourse(id: string, payload: CoursePayload) {
+    const nextPlan = await updateCourseRequest(ensurePlanId(planId), id, payload);
+    setLoadedPlan(nextPlan);
+    return findCourse(nextPlan, id);
+  }
+
+  async function setCourseNumber(id: string, courseNumber: string | null) {
+    const nextPlan = await patchCourse(ensurePlanId(planId), id, { course_number: courseNumber });
+    setLoadedPlan(nextPlan);
+    return findCourse(nextPlan, id);
+  }
+
+  async function setCourseExam(id: string, exam: SnapshotExam) {
+    const nextPlan = await putExam(ensurePlanId(planId), id, exam);
+    setLoadedPlan(nextPlan);
+    return findCourse(nextPlan, id);
+  }
+
+  async function clearCourseExam(id: string) {
+    const nextPlan = await deleteExamRequest(ensurePlanId(planId), id);
+    setLoadedPlan(nextPlan);
+    return findCourse(nextPlan, id);
+  }
+
+  async function applyImportedExams(payload: Array<{ courseId: string; exam: SnapshotExam }>) {
+    const updatedCourses: SnapshotCourse[] = [];
+    for (const entry of payload) {
+      const nextPlan = await putExam(ensurePlanId(planId), entry.courseId, entry.exam);
+      setLoadedPlan(nextPlan);
+      updatedCourses.push(findCourse(nextPlan, entry.courseId));
     }
 
-    const updatedCourses = current.snapshot.courses.map((course) => {
-      const exam = examByCourseId.get(course.id);
-
-      if (!exam) {
-        return course;
-      }
-
-      return {
-        ...course,
-        exam
-      };
-    });
-
-    updateSession({
-      ...current,
-      snapshot: {
-        ...current.snapshot,
-        courses: updatedCourses
-      }
-    });
-
-    return updatedCourses.filter((course) => examByCourseId.has(course.id));
+    return updatedCourses;
   }
 
-  function deleteCourse(id: string) {
-    const current = ensureSession(session);
-    requireCourse(current, id);
-
-    updateSession({
-      ...current,
-      snapshot: {
-        ...current.snapshot,
-        courses: current.snapshot.courses.filter((course) => course.id !== id)
-      }
-    });
+  async function deleteCourse(id: string) {
+    setLoadedPlan(await deleteCourseRequest(ensurePlanId(planId), id));
   }
 
-  function toggleCourse(id: string) {
-    const current = ensureSession(session);
-    return updateCourseInSession(current, id, (course) => ({
-      ...course,
-      is_active: !course.is_active
-    }));
+  async function toggleCourse(id: string) {
+    const course = findCourse(plan, id);
+    const nextPlan = await patchCourse(ensurePlanId(planId), id, { is_active: !course.is_active });
+    setLoadedPlan(nextPlan);
+    return findCourse(nextPlan, id);
   }
 
-  async function persistShare(parentSnapshotId: string | null) {
-    const current = ensureSession(session);
-    const snapshot = normalizePlannerSnapshot(current.snapshot);
-    const savedFingerprint = plannerSnapshotFingerprint(snapshot);
-
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      const code = generateShareCode();
-      const payload = await encryptPlannerSnapshot(snapshot, code, parentSnapshotId);
-
-      try {
-        const envelope = await createShareEnvelope(payload);
-        updateSession({
-          ...current,
-          snapshot,
-          currentShareId: envelope.id,
-          savedFingerprint,
-          updatedAt: new Date().toISOString()
-        });
-        return { code };
-      } catch (error) {
-        if (isShareLocatorConflict(error)) {
-          continue;
-        }
-
-        throw new Error("Code konnte nicht erstellt werden.");
-      }
-    }
-
-    throw new Error("Code konnte nicht erstellt werden.");
+  async function refreshCatalogCourse(id: string) {
+    const nextPlan = await refreshCatalogCourseRequest(ensurePlanId(planId), id);
+    setLoadedPlan(nextPlan);
+    return findCourse(nextPlan, id);
   }
 
-  async function createShare() {
-    return persistShare(null);
-  }
-
-  async function extendShare() {
-    const current = ensureSession(session);
-    if (!current.currentShareId) {
-      throw new Error("Zum Erweitern muss zuerst ein Code erstellt oder geöffnet werden.");
-    }
-
-    return persistShare(current.currentShareId);
-  }
-
-  async function openShare(code: string) {
-    try {
-      const locator = await deriveLocator(code);
-      const envelope = await fetchShareEnvelope(locator);
-      const snapshot = await decryptPlannerSnapshot(envelope, code);
-
-      updateSession({
-        snapshot,
-        currentShareId: envelope.id,
-        savedFingerprint: plannerSnapshotFingerprint(snapshot),
-        updatedAt: new Date().toISOString()
-      });
-    } catch (error) {
-      if (isShareOpenFailure(error) || error instanceof Error) {
-        throw new Error("Code konnte nicht geöffnet werden.");
-      }
-
-      throw error;
-    }
+  async function importCatalogCourse(payload: {
+    catalog_course_id: string;
+    category_id?: string | null;
+    abbreviation?: string;
+    cp_override?: number;
+    selected_subgroup_key?: string | null;
+  }) {
+    const result = await importCatalogCourseRequest(ensurePlanId(planId), payload);
+    setLoadedPlan(result.plan);
+    return { courseId: result.course_id };
   }
 
   const value = useMemo<PlannerContextValue>(
     () => ({
-      snapshot: session?.snapshot ?? null,
+      snapshot: plan,
+      planId,
+      planName: plan?.name ?? null,
       uiPreferences,
-      hasCurrentPlanner: session !== null,
-      hasPersistedDraft: persistedDraft !== null,
-      hasUnsavedChanges,
-      currentShareId: session?.currentShareId ?? null,
+      hasCurrentPlanner: Boolean(plan),
+      hasPersistedDraft: Boolean(readStoredPlanId()),
+      hasUnsavedChanges: false,
+      isLoadingPlan,
       startNewPlanner,
       resumePersistedDraft,
       updateUiPreferences,
+      renamePlan,
       createCategory,
       updateCategory,
       deleteCategory,
@@ -561,11 +325,10 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
       applyImportedExams,
       deleteCourse,
       toggleCourse,
-      createShare,
-      extendShare,
-      openShare
+      refreshCatalogCourse,
+      importCatalogCourse
     }),
-    [hasUnsavedChanges, persistedDraft, session, uiPreferences]
+    [isLoadingPlan, plan, planId, uiPreferences]
   );
 
   return <PlannerContext.Provider value={value}>{children}</PlannerContext.Provider>;

@@ -3,6 +3,7 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultSettings, type PlannerAppointment, type PlannerCourse, type Settings } from "../api/types";
+import { useRefreshCatalogCourse } from "../hooks/useCourseMutations";
 import { useCourses, useToggleCourse } from "../hooks/useCourses";
 import { useSettings, useUpdateSettings } from "../hooks/useSettings";
 import { CalendarPage } from "./CalendarPage";
@@ -28,6 +29,10 @@ vi.mock("../hooks/useCourses", () => ({
   useToggleCourse: vi.fn()
 }));
 
+vi.mock("../hooks/useCourseMutations", () => ({
+  useRefreshCatalogCourse: vi.fn()
+}));
+
 vi.mock("../hooks/useSettings", () => ({
   useSettings: vi.fn(),
   useUpdateSettings: vi.fn()
@@ -35,6 +40,7 @@ vi.mock("../hooks/useSettings", () => ({
 
 const mockedUseCourses = vi.mocked(useCourses);
 const mockedUseToggleCourse = vi.mocked(useToggleCourse);
+const mockedUseRefreshCatalogCourse = vi.mocked(useRefreshCatalogCourse);
 const mockedUseSettings = vi.mocked(useSettings);
 const mockedUseUpdateSettings = vi.mocked(useUpdateSettings);
 
@@ -56,6 +62,13 @@ function makeAppointment(overrides: Partial<PlannerAppointment>): PlannerAppoint
 function makeCourse(overrides: Partial<PlannerCourse> = {}): PlannerCourse {
   return {
     id: overrides.id ?? "course-1",
+    catalogCourseId: overrides.catalogCourseId ?? null,
+    catalogStatus: overrides.catalogStatus ?? "manual",
+    catalogSyncedAt: overrides.catalogSyncedAt ?? null,
+    catalogLastScannedAt: overrides.catalogLastScannedAt ?? null,
+    catalogLastScannedAtAtSync: overrides.catalogLastScannedAtAtSync ?? null,
+    catalogHasUpdate: overrides.catalogHasUpdate ?? false,
+    catalogIsModified: overrides.catalogIsModified ?? false,
     name: overrides.name ?? "Softwaretechnik",
     abbreviation: overrides.abbreviation ?? "SWT",
     cp: overrides.cp ?? 5,
@@ -77,6 +90,11 @@ function setup({ courses = [], settings = defaultSettings }: { courses?: Planner
     mutate: toggleCourse,
     mutateAsync: vi.fn().mockResolvedValue(undefined)
   });
+  mockedUseRefreshCatalogCourse.mockReturnValue({
+    isPending: false,
+    mutate: vi.fn(),
+    mutateAsync: vi.fn().mockResolvedValue(makeCourse({}))
+  } as ReturnType<typeof useRefreshCatalogCourse>);
   mockedUseSettings.mockReturnValue({
     data: settings,
     isLoading: false

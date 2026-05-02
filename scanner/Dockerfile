@@ -3,15 +3,14 @@ FROM node:20-alpine
 WORKDIR /app
 
 COPY packages/shared/package*.json packages/shared/
-COPY frontend/package*.json frontend/
+COPY scanner/package*.json scanner/
 RUN cd packages/shared && npm install
-RUN cd frontend && npm install
+RUN cd scanner && npm install
 
 COPY packages/shared packages/shared
-COPY frontend frontend
+COPY scanner scanner
 RUN cd packages/shared && npm run build
+RUN cd scanner && npm run build
 
-EXPOSE 3000
-
-WORKDIR /app/frontend
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "3000"]
+WORKDIR /app/scanner
+CMD ["npm", "run", "scan:watch"]
