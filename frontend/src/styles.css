@@ -112,23 +112,54 @@ body {
 
 .brand-group {
   display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
+  align-items: center;
+  min-width: max-content;
 }
 
 .topbar h1 {
   margin: 0;
   font-family: var(--font-heading);
-  font-size: clamp(1.28rem, 1.6vw, 1.8rem);
+  font-size: clamp(1.35rem, 1.65vw, 1.9rem);
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
 }
 
-.brand-group p {
-  margin: 0;
-  color: var(--text-subtle);
-  font-size: 0.82rem;
-  font-weight: 600;
+.brand-wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.12em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.brand-logo-wrap {
+  position: relative;
+  display: inline-flex;
+  width: 1.06em;
+  height: 1.42em;
+  margin: 0 -0.04em 0 -0.02em;
+  flex: 0 0 auto;
+  transform: translateY(0.1em);
+}
+
+.brand-logo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.brand-logo-dark {
+  display: none;
+}
+
+.dark .brand-logo-light {
+  display: none;
+}
+
+.dark .brand-logo-dark {
+  display: block;
 }
 
 .topbar nav {
@@ -1161,10 +1192,6 @@ textarea:disabled {
 @media (max-width: 767px) {
   .app-shell {
     padding: 0.9rem;
-  }
-
-  .brand-group p {
-    font-size: 0.78rem;
   }
 
   .topbar {

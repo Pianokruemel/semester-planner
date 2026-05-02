@@ -13,7 +13,7 @@ function App() {
   const navigate = useNavigate();
   const { data: settings } = useSettings();
   const updateSettings = useUpdateSettings();
-  const { hasCurrentPlanner, isLoadingPlan, planName, startNewPlanner } = usePlannerStore();
+  const { hasCurrentPlanner, isLoadingPlan, startNewPlanner } = usePlannerStore();
   const mergedSettings = settings ?? defaultSettings;
   const [entryError, setEntryError] = useState("");
   const [isCreatingPlan, setIsCreatingPlan] = useState(false);
@@ -102,8 +102,14 @@ function App() {
     <div className="app-shell">
       <header className="topbar">
         <div className="brand-group">
-          <h1>Stundenplan</h1>
-          <p>{planName ?? "Mein Stundenplan"}</p>
+          <h1 className="brand-wordmark" aria-label="Semesti Plani">
+            <span aria-hidden="true">Semesti</span>
+            <span className="brand-logo-wrap" aria-hidden="true">
+              <img className="brand-logo brand-logo-light" src="/brand/semesti-p-light.png" alt="" />
+              <img className="brand-logo brand-logo-dark" src="/brand/semesti-p-dark.png" alt="" />
+            </span>
+            <span aria-hidden="true">lani</span>
+          </h1>
         </div>
         <nav>
           <NavLink to="/">Kalender</NavLink>
