@@ -5,7 +5,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Calendar, View, Views, dayjsLocalizer } from "react-big-calendar";
 import "react-big-calendar/lib/css/react-big-calendar.css";
-import { AppointmentType, formatAppointmentType } from "../api/types";
+import { AppointmentType, PlannerCourse, formatAppointmentType } from "../api/types";
+import { useRefreshCatalogCourse } from "../hooks/useCourseMutations";
 import { useCourses, useToggleCourse } from "../hooks/useCourses";
 import { useSettings, useUpdateSettings } from "../hooks/useSettings";
 import { ExportAppointment, buildIcs } from "../planner/icsExporter";
@@ -72,10 +73,31 @@ function weekContainsVisibleWeekendLecture(events: CalendarEvent[], currentDate:
   });
 }
 
+function courseCatalogBadge(course: PlannerCourse) {
+  if (course.catalogStatus === "outdated") {
+    return "Katalog neuer";
+  }
+
+  if (course.catalogStatus === "modified") {
+    return course.catalogHasUpdate ? "Lokal geändert, Katalog neuer" : "Lokal geändert";
+  }
+
+  if (course.catalogStatus === "missing") {
+    return "Katalog fehlt";
+  }
+
+  if (course.catalogStatus === "current") {
+    return "Katalog aktuell";
+  }
+
+  return "";
+}
+
 export function CalendarPage({ showFullName }: Props) {
   const navigate = useNavigate();
   const { data: courses = [], isLoading } = useCourses();
   const toggleCourse = useToggleCourse();
+  const refreshCatalogCourse = useRefreshCatalogCourse();
   const { data: settings } = useSettings();
   const { mutate: patchSettings } = useUpdateSettings();
   const [selectedCps, setSelectedCps] = useState<number[]>([]);
@@ -343,6 +365,23 @@ export function CalendarPage({ showFullName }: Props) {
     }
   }
 
+  async function refreshCourseAppointments(course: PlannerCourse) {
+    setActionStatus("");
+    if (course.catalogIsModified) {
+      const ok = window.confirm("Katalogdaten aktualisieren? Deine lokal bearbeiteten Termine werden ersetzt.");
+      if (!ok) {
+        return;
+      }
+    }
+
+    try {
+      await refreshCatalogCourse.mutateAsync(course.id);
+      setActionStatus("Katalogtermine aktualisiert.");
+    } catch (error) {
+      setActionStatus(error instanceof Error ? error.message : "Katalogtermine konnten nicht aktualisiert werden.");
+    }
+  }
+
   return (
     <section className="calendar-layout">
       <button type="button" className="mobile-filter-toggle" onClick={() => setIsFilterOpen(true)}>
@@ -371,19 +410,38 @@ export function CalendarPage({ showFullName }: Props) {
 
         <div className="filter-group">
           <h3>Kurse</h3>
-          {courses.map((course) => (
-            <label key={course.id} className="check-row">
-              <span className="color-dot" style={{ backgroundColor: course.category?.color ?? "#64748B" }} />
-              <input
-                type="checkbox"
-                checked={course.isActive}
-                onChange={() => {
-                  toggleCourse.mutate(course.id);
-                }}
-              />
-              <span>{course.name}</span>
-            </label>
-          ))}
+          {courses.map((course) => {
+            const badge = courseCatalogBadge(course);
+            const canRefresh =
+              course.catalogStatus === "outdated" || course.catalogStatus === "modified" || course.catalogHasUpdate;
+
+            return (
+              <div key={course.id} className="course-filter-row">
+                <label className="check-row">
+                  <span className="color-dot" style={{ backgroundColor: course.category?.color ?? "#64748B" }} />
+                  <input
+                    type="checkbox"
+                    checked={course.isActive}
+                    onChange={() => {
+                      toggleCourse.mutate(course.id);
+                    }}
+                  />
+                  <span>{course.name}</span>
+                </label>
+                {badge ? <span className={`catalog-status-chip ${course.catalogStatus}`}>{badge}</span> : null}
+                {canRefresh ? (
+                  <button
+                    type="button"
+                    className="inline-action-btn"
+                    onClick={() => void refreshCourseAppointments(course)}
+                    disabled={refreshCatalogCourse.isPending}
+                  >
+                    Aktualisieren
+                  </button>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
 
         <div className="filter-group">
@@ -475,7 +533,7 @@ export function CalendarPage({ showFullName }: Props) {
             <button type="button" className="primary-btn" onClick={() => void exportIcs()}>
               ICS exportieren
             </button>
-            <small>Freigabelinks und das Öffnen geteilter Pläne findest du oben in der Kopfzeile.</small>
+            <small>Der Export nutzt die aktuell sichtbaren aktiven Kurse.</small>
             {actionStatus ? <small>{actionStatus}</small> : null}
           </div>
         </div>

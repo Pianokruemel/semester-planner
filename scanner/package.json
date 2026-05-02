@@ -1,0 +1,26 @@
+{
+  "name": "semester-planner-scanner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prelint": "npm --prefix ../packages/shared run build",
+    "prebuild": "npm --prefix ../packages/shared run build",
+    "pretest": "npm --prefix ../packages/shared run build",
+    "scan:once": "tsx src/index.ts scan:once",
+    "scan:watch": "tsx src/index.ts scan:watch",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@semester-planner/shared": "file:../packages/shared",
+    "cheerio": "^1.1.2"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.5"
+  }
+}

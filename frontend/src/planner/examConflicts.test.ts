@@ -5,6 +5,13 @@ import { buildExamConflictMap } from "./examConflicts";
 function makeCourse(overrides: Partial<PlannerCourse> = {}): PlannerCourse {
   return {
     id: overrides.id ?? "course-1",
+    catalogCourseId: overrides.catalogCourseId ?? null,
+    catalogStatus: overrides.catalogStatus ?? "manual",
+    catalogSyncedAt: overrides.catalogSyncedAt ?? null,
+    catalogLastScannedAt: overrides.catalogLastScannedAt ?? null,
+    catalogLastScannedAtAtSync: overrides.catalogLastScannedAtAtSync ?? null,
+    catalogHasUpdate: overrides.catalogHasUpdate ?? false,
+    catalogIsModified: overrides.catalogIsModified ?? false,
     name: overrides.name ?? "IT-Sicherheit",
     abbreviation: overrides.abbreviation ?? "ITS",
     cp: overrides.cp ?? 6,

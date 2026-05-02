@@ -1,4 +1,3 @@
-import { parseAppointments } from "../planner/appointmentParser";
 import { usePlannerStore } from "../planner/store";
 import { useLocalMutation } from "./useLocalMutation";
 
@@ -14,35 +13,23 @@ export type CoursePayload = {
 export function useCreateCourse() {
   const { createCourse } = usePlannerStore();
 
-  return useLocalMutation(async (payload: CoursePayload) =>
-    createCourse({
-      name: payload.name,
-      abbreviation: payload.abbreviation,
-      cp: payload.cp,
-      category_id: payload.category_id,
-      course_number: payload.course_number,
-      appointments: parseAppointments(payload.appointments_raw)
-    })
-  );
+  return useLocalMutation(async (payload: CoursePayload) => createCourse(payload));
 }
 
 export function useUpdateCourse() {
   const { updateCourse } = usePlannerStore();
 
-  return useLocalMutation(async (payload: CoursePayload & { id: string }) =>
-    updateCourse(payload.id, {
-      name: payload.name,
-      abbreviation: payload.abbreviation,
-      cp: payload.cp,
-      category_id: payload.category_id,
-      course_number: payload.course_number,
-      appointments: parseAppointments(payload.appointments_raw)
-    })
-  );
+  return useLocalMutation(async (payload: CoursePayload & { id: string }) => updateCourse(payload.id, payload));
 }
 
 export function useDeleteCourse() {
   const { deleteCourse } = usePlannerStore();
 
   return useLocalMutation(async (id: string) => deleteCourse(id));
+}
+
+export function useRefreshCatalogCourse() {
+  const { refreshCatalogCourse } = usePlannerStore();
+
+  return useLocalMutation(async (id: string) => refreshCatalogCourse(id));
 }

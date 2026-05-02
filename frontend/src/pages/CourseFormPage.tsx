@@ -1,15 +1,46 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { defaultUiPreferences, formatAppointmentType } from "../api/types";
+import { PlannerCourse, defaultUiPreferences, formatAppointmentType } from "../api/types";
 import { useCategories } from "../hooks/useCategories";
 import { useCourses } from "../hooks/useCourses";
 import { useUpdateSettings } from "../hooks/useSettings";
-import { useCreateCourse, useDeleteCourse, useUpdateCourse } from "../hooks/useCourseMutations";
+import { useCreateCourse, useDeleteCourse, useRefreshCatalogCourse, useUpdateCourse } from "../hooks/useCourseMutations";
 import { formatAppointmentsForTextarea, summarizeAppointments } from "../planner/appointmentParser";
 
 type Props = {
   mode: "create" | "edit";
 };
+
+function formatDateTime(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  return new Intl.DateTimeFormat("de-DE", {
+    dateStyle: "short",
+    timeStyle: "short"
+  }).format(new Date(value));
+}
+
+function catalogStatusText(course: PlannerCourse) {
+  if (course.catalogStatus === "manual") {
+    return "Manueller Kurs";
+  }
+
+  if (course.catalogStatus === "missing") {
+    return "Katalogkurs nicht mehr verfügbar";
+  }
+
+  if (course.catalogStatus === "modified") {
+    return course.catalogHasUpdate ? "Lokal geändert, neuer Katalogstand verfügbar" : "Lokal geändert";
+  }
+
+  if (course.catalogStatus === "outdated") {
+    return "Neuer Katalogstand verfügbar";
+  }
+
+  return "Katalogdaten aktuell";
+}
 
 export function CourseFormPage({ mode }: Props) {
   const navigate = useNavigate();
@@ -19,6 +50,7 @@ export function CourseFormPage({ mode }: Props) {
   const updateSettings = useUpdateSettings();
   const createCourse = useCreateCourse();
   const updateCourse = useUpdateCourse();
+  const refreshCatalogCourse = useRefreshCatalogCourse();
   const deleteCourse = useDeleteCourse();
 
   const existingCourse = useMemo(
@@ -41,8 +73,9 @@ export function CourseFormPage({ mode }: Props) {
   const [preview, setPreview] = useState<ReturnType<typeof summarizeAppointments> | null>(null);
   const [previewError, setPreviewError] = useState("");
   const isSaving = createCourse.isPending || updateCourse.isPending || updateSettings.isPending;
+  const isRefreshingCatalog = refreshCatalogCourse.isPending;
   const isDeleting = deleteCourse.isPending;
-  const isBusy = isSaving || isDeleting || (mode === "edit" && isLoadingCourses);
+  const isBusy = isSaving || isRefreshingCatalog || isDeleting || (mode === "edit" && isLoadingCourses);
 
   useEffect(() => {
     if (!existingCourse) {
@@ -138,6 +171,25 @@ export function CourseFormPage({ mode }: Props) {
     }
   }
 
+  async function onRefreshCatalog() {
+    if (!existingCourse) {
+      return;
+    }
+
+    if (existingCourse.catalogIsModified) {
+      const ok = window.confirm("Katalogdaten aktualisieren? Deine lokal bearbeiteten Termine werden ersetzt.");
+      if (!ok) {
+        return;
+      }
+    }
+
+    try {
+      await refreshCatalogCourse.mutateAsync(existingCourse.id);
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : "Katalogdaten konnten nicht aktualisiert werden.");
+    }
+  }
+
   if (isLoadingCourses && mode === "edit") {
     return (
       <section className="page-card">
@@ -165,6 +217,26 @@ export function CourseFormPage({ mode }: Props) {
     <section className="page-card">
       <h2>{mode === "create" ? "Kurs erstellen" : "Kurs bearbeiten"}</h2>
       <p className="page-intro">Fülle Kursdaten aus und füge den tabellarischen TUCaN-Export direkt ein.</p>
+      {mode === "edit" && existingCourse && existingCourse.catalogStatus !== "manual" ? (
+        <div className={`catalog-sync-banner ${existingCourse.catalogStatus}`}>
+          <div>
+            <strong>{catalogStatusText(existingCourse)}</strong>
+            <span>
+              {formatDateTime(existingCourse.catalogSyncedAt)
+                ? `Zuletzt in deinen Plan übernommen: ${formatDateTime(existingCourse.catalogSyncedAt)}`
+                : "Noch kein Katalog-Sync-Zeitpunkt gespeichert."}
+            </span>
+            {formatDateTime(existingCourse.catalogLastScannedAt) ? (
+              <span>Katalog zuletzt gescannt: {formatDateTime(existingCourse.catalogLastScannedAt)}</span>
+            ) : null}
+          </div>
+          {existingCourse.catalogStatus !== "missing" ? (
+            <button type="button" className="primary-btn" onClick={() => void onRefreshCatalog()} disabled={isBusy}>
+              {isRefreshingCatalog ? "Aktualisiere..." : "Termine aus Katalog aktualisieren"}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <form className="form-grid" onSubmit={onSubmit}>
         <label>
           Kursname
@@ -183,7 +255,7 @@ export function CourseFormPage({ mode }: Props) {
           CP
           <input
             type="number"
-            min={1}
+            min={0}
             value={cp}
             onChange={(event) => setCp(Number(event.target.value))}
             required

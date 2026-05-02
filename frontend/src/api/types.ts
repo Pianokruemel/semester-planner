@@ -20,8 +20,19 @@ export type SnapshotExam = {
   time_to: string;
 };
 
+export type CatalogSyncStatus = "manual" | "current" | "outdated" | "modified" | "missing";
+
 export type SnapshotCourse = {
   id: string;
+  catalog_course_id: string | null;
+  catalog_status: CatalogSyncStatus;
+  catalog_synced_at: string | null;
+  catalog_last_scanned_at: string | null;
+  catalog_last_scanned_at_at_sync: string | null;
+  catalog_has_update: boolean;
+  catalog_is_modified: boolean;
+  catalog_subgroup_key: string | null;
+  catalog_subgroup_title: string | null;
   name: string;
   abbreviation: string;
   cp: number;
@@ -57,6 +68,15 @@ export type PlannerExam = {
 
 export type PlannerCourse = {
   id: string;
+  catalogCourseId: string | null;
+  catalogStatus: CatalogSyncStatus;
+  catalogSyncedAt: string | null;
+  catalogLastScannedAt: string | null;
+  catalogLastScannedAtAtSync: string | null;
+  catalogHasUpdate: boolean;
+  catalogIsModified: boolean;
+  catalogSubgroupKey?: string | null;
+  catalogSubgroupTitle?: string | null;
   name: string;
   abbreviation: string;
   cp: number;
@@ -97,29 +117,7 @@ export type UiPreferencesPatch = {
 
 export type SettingsPatch = UiPreferencesPatch;
 
-export const plannerSnapshotVersion = "2.1";
-export const supportedPlannerSnapshotVersions = ["2.0", plannerSnapshotVersion] as const;
-export const shareCryptoVersion = "aes-256-gcm+pbkdf2-sha256-v1";
-
-export type ShareEnvelope = {
-  id: string;
-  ciphertext: string;
-  nonce: string;
-  payload_version: string;
-  crypto_version: string;
-  parent_snapshot_id: string | null;
-  created_at: string;
-  expires_at: string | null;
-};
-
-export type CreateShareEnvelopeRequest = {
-  locator: string;
-  ciphertext: string;
-  nonce: string;
-  payload_version: typeof plannerSnapshotVersion;
-  crypto_version: typeof shareCryptoVersion;
-  parent_snapshot_id: string | null;
-};
+export const plannerSnapshotVersion = "3.0";
 
 export const defaultUiPreferences: UiPreferences = {
   dark_mode: false,
@@ -213,6 +211,14 @@ function normalizeNullableText(input: unknown): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
+function normalizeCatalogStatus(input: unknown, catalogCourseId: string | null): CatalogSyncStatus {
+  if (input === "current" || input === "outdated" || input === "modified" || input === "missing") {
+    return input;
+  }
+
+  return catalogCourseId ? "outdated" : "manual";
+}
+
 function normalizeExam(input: unknown, index: number): SnapshotExam | null {
   if (input == null) {
     return null;
@@ -264,6 +270,8 @@ function normalizeCourse(input: unknown, index: number, categoryIds: Set<string>
   }
 
   const categoryId = typeof input.category_id === "string" && categoryIds.has(input.category_id) ? input.category_id : null;
+  const catalogCourseId = normalizeNullableText(input.catalog_course_id);
+  const catalogStatus = normalizeCatalogStatus(input.catalog_status, catalogCourseId);
   const courseNumber = normalizeNullableText(input.course_number);
   const exam = normalizeExam(input.exam, index);
   const appointments = Array.isArray(input.appointments)
@@ -272,6 +280,15 @@ function normalizeCourse(input: unknown, index: number, categoryIds: Set<string>
 
   return {
     id: input.id,
+    catalog_course_id: catalogCourseId,
+    catalog_status: catalogStatus,
+    catalog_synced_at: normalizeNullableText(input.catalog_synced_at),
+    catalog_last_scanned_at: normalizeNullableText(input.catalog_last_scanned_at),
+    catalog_last_scanned_at_at_sync: normalizeNullableText(input.catalog_last_scanned_at_at_sync),
+    catalog_has_update: input.catalog_has_update === true,
+    catalog_is_modified: input.catalog_is_modified === true || catalogStatus === "modified",
+    catalog_subgroup_key: normalizeNullableText(input.catalog_subgroup_key),
+    catalog_subgroup_title: normalizeNullableText(input.catalog_subgroup_title),
     name: input.name.trim(),
     abbreviation: input.abbreviation.trim(),
     cp,
@@ -346,23 +363,6 @@ export function mergeUiPreferencesPatch(current: UiPreferences, patch: UiPrefere
       ...(patch.active_filters ?? {})
     }
   });
-}
-
-export function createEmptyPlannerSnapshot(): PlannerSnapshot {
-  return {
-    export_version: plannerSnapshotVersion,
-    settings: {},
-    categories: [],
-    courses: []
-  };
-}
-
-export function plannerSnapshotFingerprint(snapshot: PlannerSnapshot): string {
-  return JSON.stringify(normalizePlannerSnapshot(snapshot));
-}
-
-export function isPlannerSnapshotEmpty(snapshot: PlannerSnapshot): boolean {
-  return snapshot.categories.length === 0 && snapshot.courses.length === 0;
 }
 
 export function createAppointmentId(courseId: string, appointment: SnapshotAppointment, index: number): string {

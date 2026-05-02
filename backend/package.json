@@ -4,6 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "prelint": "npm --prefix ../packages/shared run build",
+    "predev": "npm --prefix ../packages/shared run build",
+    "prebuild": "npm --prefix ../packages/shared run build",
     "test": "node -e \"console.log('No automated backend tests configured yet.')\"",
     "lint": "tsc --noEmit -p tsconfig.json",
     "dev": "tsx watch src/index.ts",
@@ -11,8 +14,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
-    "prisma:deploy": "prisma migrate deploy",
+    "prisma:push": "prisma db push",
     "seed": "node prisma/seed.js"
   },
   "keywords": [],
@@ -21,6 +23,7 @@
   "type": "commonjs",
   "private": true,
   "dependencies": {
+    "@semester-planner/shared": "file:../packages/shared",
     "@prisma/client": "^6.18.0",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",

@@ -2,8 +2,10 @@ import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
 import { ZodError } from "zod";
+import { startScannerIfCatalogEmpty } from "./lib/bootScanner";
 import { errorHandler, HttpError, notFoundHandler } from "./middleware/errorHandler";
-import { sharesRouter } from "./routes/shares";
+import { catalogRouter } from "./routes/catalog";
+import { plansRouter } from "./routes/plans";
 
 dotenv.config();
 
@@ -17,7 +19,8 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
-app.use("/api/shares", sharesRouter);
+app.use("/api/plans", plansRouter);
+app.use("/api/catalog", catalogRouter);
 
 app.use(notFoundHandler);
 
@@ -34,4 +37,7 @@ app.use(errorHandler);
 
 app.listen(port, () => {
   console.log(`Backend running on port ${port}`);
+  void startScannerIfCatalogEmpty({ port }).catch((error) => {
+    console.error("catalog_empty_scanner_boot_check_failed", error);
+  });
 });

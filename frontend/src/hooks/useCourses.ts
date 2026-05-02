@@ -14,6 +14,15 @@ export function useCourses() {
 
     return snapshot.courses.map((course) => ({
       id: course.id,
+      catalogCourseId: course.catalog_course_id,
+      catalogStatus: course.catalog_status,
+      catalogSyncedAt: course.catalog_synced_at,
+      catalogLastScannedAt: course.catalog_last_scanned_at,
+      catalogLastScannedAtAtSync: course.catalog_last_scanned_at_at_sync,
+      catalogHasUpdate: course.catalog_has_update,
+      catalogIsModified: course.catalog_is_modified,
+      catalogSubgroupKey: course.catalog_subgroup_key,
+      catalogSubgroupTitle: course.catalog_subgroup_title,
       name: course.name,
       abbreviation: course.abbreviation,
       cp: course.cp,
