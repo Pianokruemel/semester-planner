@@ -1,6 +1,15 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { readConfig, ScannerConfig } from "./config.js";
 import {
+  discoverStudyProgramPages,
+  findCurrentModuleHandbookLink,
+  ModuleHandbookLink,
+  parseModuleHandbookPages,
+  parsePdfPages,
+  sha256Hex,
+  StudyProgramPage
+} from "./moduleHandbooks.js";
+import {
   attachSmallGroupDetail,
   discoverSemesterKey,
   extractBreadcrumb,
@@ -31,6 +40,33 @@ async function fetchText(url: string): Promise<string> {
   }
 
   return response.text();
+}
+
+async function fetchBytes(
+  url: string,
+  headers: Record<string, string> = {}
+): Promise<{ status: number; bytes: Uint8Array; etag: string | null; lastModified: string | null }> {
+  const response = await fetch(url, {
+    headers: {
+      "user-agent": "semester-planner-public-catalog-scanner/0.1",
+      ...headers
+    }
+  });
+
+  if (response.status === 304) {
+    return { status: 304, bytes: new Uint8Array(), etag: response.headers.get("etag"), lastModified: response.headers.get("last-modified") };
+  }
+
+  if (!response.ok) {
+    throw new Error(`PDF request failed ${response.status}: ${url}`);
+  }
+
+  return {
+    status: response.status,
+    bytes: new Uint8Array(await response.arrayBuffer()),
+    etag: response.headers.get("etag"),
+    lastModified: response.headers.get("last-modified")
+  };
 }
 
 function isWithinFaculty(path: string[], link: TucanLink, facultyPrefix: string): boolean {
@@ -125,6 +161,133 @@ async function ingestBatch(config: ScannerConfig, payload: {
   }
 
   throw lastError instanceof Error ? lastError : new Error("Backend ingest failed.");
+}
+
+async function fetchHandbookStatus(config: ScannerConfig, link: ModuleHandbookLink): Promise<{
+  content_hash: string;
+  etag: string | null;
+  last_modified: string | null;
+} | null> {
+  const params = new URLSearchParams({
+    program_key: link.program_key,
+    po_label: link.po_label,
+    pdf_url: link.pdf_url
+  });
+  const response = await fetch(`${config.backendApiUrl}/catalog/internal/module-handbooks/status?${params.toString()}`, {
+    headers: {
+      "x-scanner-token": config.scannerToken
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Backend handbook status failed ${response.status}: ${await response.text()}`);
+  }
+
+  return (await response.json()) as { content_hash: string; etag: string | null; last_modified: string | null } | null;
+}
+
+async function ingestModuleHandbooks(
+  config: ScannerConfig,
+  programmes: StudyProgramPage[],
+  documents: Array<{
+    program_key: string;
+    po_label: string;
+    pdf_url: string;
+    pdf_label: string;
+    content_hash: string;
+    etag: string | null;
+    last_modified: string | null;
+    fetch_status: string;
+    parse_status: string;
+    error_text?: string | null;
+    courses: ReturnType<typeof parseModuleHandbookPages>;
+  }>
+) {
+  if (programmes.length === 0 && documents.length === 0) {
+    return;
+  }
+
+  const response = await fetch(`${config.backendApiUrl}/catalog/internal/module-handbooks`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-scanner-token": config.scannerToken
+    },
+    body: JSON.stringify({ programmes, documents })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Backend handbook ingest failed ${response.status}: ${await response.text()}`);
+  }
+
+  const result = await response.json();
+  console.log(`module_handbooks_ingested ${JSON.stringify(result)}`);
+}
+
+async function enrichModuleHandbooks(config: ScannerConfig) {
+  console.log(`module_handbooks_overview url=${config.moduleHandbookOverviewUrl}`);
+  const overviewHtml = await fetchText(config.moduleHandbookOverviewUrl);
+  const programmePages = discoverStudyProgramPages(overviewHtml, config.moduleHandbookOverviewUrl);
+  const links: ModuleHandbookLink[] = [];
+
+  for (const page of programmePages) {
+    await sleep(config.rateLimitMs);
+    const programHtml = await fetchText(page.page_url);
+    const link = findCurrentModuleHandbookLink(programHtml, page);
+    if (link) {
+      links.push(link);
+      console.log(`module_handbook_found program="${link.program_label}" po="${link.po_label}" pdf=${link.pdf_url}`);
+    } else {
+      console.warn(`module_handbook_missing program="${page.program_label}" page=${page.page_url}`);
+    }
+  }
+
+  const documents: Parameters<typeof ingestModuleHandbooks>[2] = [];
+  for (const link of links) {
+    try {
+      const previous = await fetchHandbookStatus(config, link);
+      const headers: Record<string, string> = {};
+      if (previous?.etag) {
+        headers["if-none-match"] = previous.etag;
+      }
+      if (previous?.last_modified) {
+        headers["if-modified-since"] = previous.last_modified;
+      }
+
+      await sleep(config.rateLimitMs);
+      const fetched = await fetchBytes(link.pdf_url, headers);
+      if (fetched.status === 304) {
+        console.log(`module_handbook_unchanged program="${link.program_label}" reason=not_modified`);
+        continue;
+      }
+
+      const contentHash = sha256Hex(fetched.bytes);
+      if (previous?.content_hash === contentHash) {
+        console.log(`module_handbook_unchanged program="${link.program_label}" reason=same_hash`);
+        continue;
+      }
+
+      const pages = await parsePdfPages(fetched.bytes);
+      const courses = parseModuleHandbookPages(pages);
+      documents.push({
+        program_key: link.program_key,
+        po_label: link.po_label,
+        pdf_url: link.pdf_url,
+        pdf_label: link.pdf_label,
+        content_hash: contentHash,
+        etag: fetched.etag,
+        last_modified: fetched.lastModified,
+        fetch_status: "fetched",
+        parse_status: "parsed",
+        courses
+      });
+      console.log(`module_handbook_parsed program="${link.program_label}" courses=${courses.length}`);
+    } catch (error) {
+      console.error(`module_handbook_failed program="${link.program_label}" pdf=${link.pdf_url}`, error);
+    }
+  }
+
+  await ingestModuleHandbooks(config, programmePages, documents);
 }
 
 async function scanOnce(config: ScannerConfig) {
@@ -234,6 +397,12 @@ async function scanOnce(config: ScannerConfig) {
     courses_failed: coursesFailed,
     courses: batch
   });
+
+  try {
+    await enrichModuleHandbooks(config);
+  } catch (error) {
+    console.error("module_handbooks_failed", error);
+  }
 }
 
 async function main() {

@@ -5,7 +5,9 @@ import {
   CatalogCourseDetail,
   CatalogSmallGroup,
   CatalogSmallGroupAppointment,
+  CatalogStudyProgram,
   fetchCatalogCourse,
+  fetchCatalogProgrammes,
   searchCatalogCourses
 } from "../api/catalog";
 import { usePlannerStore } from "../planner/store";
@@ -116,9 +118,11 @@ function appointmentTimePlaceKey(appointment: {
 
 export function CatalogPage() {
   const navigate = useNavigate();
-  const { importCatalogCourse } = usePlannerStore();
+  const { importCatalogCourse, preferredStudyProgramKey, setPreferredStudyProgram } = usePlannerStore();
   const [query, setQuery] = useState("");
   const [courses, setCourses] = useState<CatalogCourseCard[]>([]);
+  const [programmes, setProgrammes] = useState<CatalogStudyProgram[]>([]);
+  const [selectedProgramKey, setSelectedProgramKey] = useState(preferredStudyProgramKey ?? "");
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
   const [selectedCourse, setSelectedCourse] = useState<CatalogCourseDetail | null>(null);
   const [isSearching, setIsSearching] = useState(false);
@@ -129,6 +133,16 @@ export function CatalogPage() {
   const [isCpPromptVisible, setIsCpPromptVisible] = useState(false);
   const [cpOverride, setCpOverride] = useState("6");
   const [selectedSubgroupKey, setSelectedSubgroupKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSelectedProgramKey(preferredStudyProgramKey ?? "");
+  }, [preferredStudyProgramKey]);
+
+  useEffect(() => {
+    void fetchCatalogProgrammes()
+      .then(setProgrammes)
+      .catch(() => setProgrammes([]));
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -170,6 +184,7 @@ export function CatalogPage() {
       const groups = smallGroupsFromCourse(course);
       setSelectedCourse(course);
       setSelectedSubgroupKey(groups[0]?.key ?? null);
+      setSelectedProgramKey(preferredStudyProgramKey ?? "");
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : "Katalogkurs konnte nicht geladen werden.");
     } finally {
@@ -182,7 +197,12 @@ export function CatalogPage() {
       return;
     }
 
-    const needsCpOverride = selectedCourse.cp == null || selectedCourse.cp <= 0;
+    const selectedProgramme = selectedProgramKey
+      ? selectedCourse.programmes.find((program) => program.program_key === selectedProgramKey) ?? null
+      : null;
+    const hasProgrammeCp = Boolean(selectedProgramme?.cp && selectedProgramme.cp > 0);
+    const hasTucanCp = Boolean(selectedCourse.cp && selectedCourse.cp > 0);
+    const needsCpOverride = !hasProgrammeCp && !hasTucanCp;
     if (needsCpOverride && !isCpPromptVisible) {
       setIsCpPromptVisible(true);
       return;
@@ -200,6 +220,7 @@ export function CatalogPage() {
     try {
       const result = await importCatalogCourse({
         catalog_course_id: selectedCourse.id,
+        program_key: selectedProgramKey || null,
         selected_subgroup_key: selectedSubgroupKey,
         ...(needsCpOverride ? { cp_override: parsedCpOverride } : {})
       });
@@ -217,6 +238,9 @@ export function CatalogPage() {
     appointments: group.appointments.filter((appointment) => !baseAppointmentKeys.has(appointmentTimePlaceKey(appointment)))
   }));
   const selectedSubgroup = smallGroups.find((group) => group.key === selectedSubgroupKey) ?? null;
+  const selectedProgramme = selectedCourse && selectedProgramKey
+    ? selectedCourse.programmes.find((program) => program.program_key === selectedProgramKey) ?? null
+    : null;
 
   const detailContent = selectedCourse ? (
     <>
@@ -228,9 +252,33 @@ export function CatalogPage() {
           </p>
           <p className="page-intro">{selectedCourse.path.join(" / ")}</p>
           <p className="page-intro">{selectedCourse.instructors.join(", ") || "Keine Lehrenden erfasst"}</p>
-          <p className="page-intro">CP: {selectedCourse.cp && selectedCourse.cp > 0 ? selectedCourse.cp : "fehlt"}</p>
+          <p className="page-intro">
+            CP: {selectedProgramme?.cp && selectedProgramme.cp > 0 ? selectedProgramme.cp : selectedCourse.cp && selectedCourse.cp > 0 ? selectedCourse.cp : "fehlt"}
+          </p>
+          {selectedProgramme ? (
+            <p className="page-intro">
+              {selectedProgramme.program_label} · {selectedProgramme.class_path.join(" / ") || selectedProgramme.module_title}
+            </p>
+          ) : null}
         </div>
         <div className="catalog-import-actions">
+          {programmes.length > 0 ? (
+            <label>
+              Studiengang
+              <select
+                value={selectedProgramKey}
+                onChange={(event) => setSelectedProgramKey(event.target.value)}
+                disabled={isImporting}
+              >
+                <option value="">Kein Studiengang</option>
+                {programmes.map((program) => (
+                  <option key={program.program_key} value={program.program_key}>
+                    {program.program_label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           {isCpPromptVisible ? (
             <label>
               CP
@@ -391,6 +439,26 @@ export function CatalogPage() {
             placeholder="Titel, Kursnummer, Dozent, Fachbereich"
           />
         </label>
+        {programmes.length > 0 ? (
+          <label className="full-width">
+            Plan-Studiengang
+            <select
+              value={preferredStudyProgramKey ?? ""}
+              onChange={(event) => {
+                const nextKey = event.target.value || null;
+                setSelectedProgramKey(event.target.value);
+                void setPreferredStudyProgram(nextKey);
+              }}
+            >
+              <option value="">Kein Studiengang</option>
+              {programmes.map((program) => (
+                <option key={program.program_key} value={program.program_key}>
+                  {program.program_label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         {isSearching ? <p className="page-intro">Suche läuft...</p> : null}
         {errorText ? <p className="error-text">{errorText}</p> : null}
         <div className="catalog-result-list">

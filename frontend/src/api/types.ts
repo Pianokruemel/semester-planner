@@ -33,6 +33,12 @@ export type SnapshotCourse = {
   catalog_is_modified: boolean;
   catalog_subgroup_key: string | null;
   catalog_subgroup_title: string | null;
+  catalog_program_key: string | null;
+  catalog_program_label: string | null;
+  catalog_program_po_label: string | null;
+  catalog_program_class_path: string[];
+  catalog_program_module_number: string | null;
+  catalog_program_module_title: string | null;
   name: string;
   abbreviation: string;
   cp: number;
@@ -46,6 +52,7 @@ export type SnapshotCourse = {
 export type PlannerSnapshot = {
   export_version: typeof plannerSnapshotVersion;
   settings: Record<string, never>;
+  preferred_study_program_key: string | null;
   categories: SnapshotCategory[];
   courses: SnapshotCourse[];
 };
@@ -77,6 +84,12 @@ export type PlannerCourse = {
   catalogIsModified: boolean;
   catalogSubgroupKey?: string | null;
   catalogSubgroupTitle?: string | null;
+  catalogProgramKey?: string | null;
+  catalogProgramLabel?: string | null;
+  catalogProgramPoLabel?: string | null;
+  catalogProgramClassPath?: string[];
+  catalogProgramModuleNumber?: string | null;
+  catalogProgramModuleTitle?: string | null;
   name: string;
   abbreviation: string;
   cp: number;
@@ -289,6 +302,14 @@ function normalizeCourse(input: unknown, index: number, categoryIds: Set<string>
     catalog_is_modified: input.catalog_is_modified === true || catalogStatus === "modified",
     catalog_subgroup_key: normalizeNullableText(input.catalog_subgroup_key),
     catalog_subgroup_title: normalizeNullableText(input.catalog_subgroup_title),
+    catalog_program_key: normalizeNullableText(input.catalog_program_key),
+    catalog_program_label: normalizeNullableText(input.catalog_program_label),
+    catalog_program_po_label: normalizeNullableText(input.catalog_program_po_label),
+    catalog_program_class_path: Array.isArray(input.catalog_program_class_path)
+      ? input.catalog_program_class_path.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+      : [],
+    catalog_program_module_number: normalizeNullableText(input.catalog_program_module_number),
+    catalog_program_module_title: normalizeNullableText(input.catalog_program_module_title),
     name: input.name.trim(),
     abbreviation: input.abbreviation.trim(),
     cp,
@@ -313,6 +334,7 @@ export function normalizePlannerSnapshot(input: unknown): PlannerSnapshot {
   return {
     export_version: plannerSnapshotVersion,
     settings: {},
+    preferred_study_program_key: normalizeNullableText(source.preferred_study_program_key),
     categories,
     courses
   };

@@ -920,7 +920,9 @@ textarea:disabled {
 }
 
 .catalog-search-panel input,
-.catalog-import-actions input {
+.catalog-search-panel select,
+.catalog-import-actions input,
+.catalog-import-actions select {
   width: 100%;
   border: var(--border-soft);
   background: rgba(255, 255, 255, 0.58);

@@ -229,6 +229,13 @@ export function CourseFormPage({ mode }: Props) {
             {formatDateTime(existingCourse.catalogLastScannedAt) ? (
               <span>Katalog zuletzt gescannt: {formatDateTime(existingCourse.catalogLastScannedAt)}</span>
             ) : null}
+            {existingCourse.catalogProgramLabel ? (
+              <span>
+                Studiengang: {existingCourse.catalogProgramLabel}
+                {existingCourse.catalogProgramPoLabel ? ` · ${existingCourse.catalogProgramPoLabel}` : ""}
+                {existingCourse.catalogProgramClassPath?.length ? ` · ${existingCourse.catalogProgramClassPath.join(" / ")}` : ""}
+              </span>
+            ) : null}
           </div>
           {existingCourse.catalogStatus !== "missing" ? (
             <button type="button" className="primary-btn" onClick={() => void onRefreshCatalog()} disabled={isBusy}>

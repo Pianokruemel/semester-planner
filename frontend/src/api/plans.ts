@@ -29,6 +29,16 @@ export async function updatePlanName(planId: string, name: string): Promise<Back
   return normalizePlan(response.data);
 }
 
+export async function updatePlanPreferredStudyProgram(
+  planId: string,
+  preferredStudyProgramKey: string | null
+): Promise<BackendPlan> {
+  const response = await apiClient.patch<BackendPlan>(`/plans/${encodeURIComponent(planId)}`, {
+    preferred_study_program_key: preferredStudyProgramKey
+  });
+  return normalizePlan(response.data);
+}
+
 export async function createCategory(planId: string, payload: { name: string; color: string }): Promise<BackendPlan> {
   const response = await apiClient.post<BackendPlan>(`/plans/${encodeURIComponent(planId)}/categories`, payload);
   return normalizePlan(response.data);
@@ -126,6 +136,7 @@ export async function importCatalogCourse(
     category_id?: string | null;
     abbreviation?: string;
     cp_override?: number;
+    program_key?: string | null;
     selected_subgroup_key?: string | null;
   }
 ): Promise<{ plan: BackendPlan; course_id: string }> {

@@ -4,6 +4,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { appointmentFingerprint, appointmentTimePlaceKey, plannedAppointmentsFromCatalog } from "../lib/catalogSync";
 import { dateFromYmd } from "../lib/dates";
+import { findProgrammeMatchesForCourseNumber, serializeProgrammeMatch } from "../lib/moduleHandbooks";
 import { prisma } from "../lib/prisma";
 import { serializePlan } from "../lib/serialization";
 import { HttpError } from "../middleware/errorHandler";
@@ -29,9 +30,18 @@ const includePlan = {
   }
 } satisfies Prisma.PlanInclude;
 
-const planPatchSchema = z.object({
-  name: z.string().trim().min(1).max(200)
+const planCreateSchema = z.object({
+  preferred_study_program_key: z.string().trim().min(1).nullable().optional()
 });
+
+const planPatchSchema = z
+  .object({
+    name: z.string().trim().min(1).max(200).optional(),
+    preferred_study_program_key: z.string().trim().min(1).nullable().optional()
+  })
+  .refine((payload) => Object.keys(payload).length > 0, {
+    message: "Mindestens ein Feld ist erforderlich."
+  });
 
 const categoryCreateSchema = z.object({
   name: z.string().trim().min(1).max(120),
@@ -71,6 +81,7 @@ const catalogImportSchema = z.object({
   category_id: uuidSchema.nullable().optional(),
   abbreviation: z.string().trim().min(1).max(32).optional(),
   cp_override: z.number().int().positive().optional(),
+  program_key: z.string().trim().min(1).nullable().optional(),
   selected_subgroup_key: z.string().trim().min(1).nullable().optional()
 });
 
@@ -236,6 +247,22 @@ async function ensurePlan(planId: string) {
   }
 }
 
+async function ensureStudyProgram(programKey: string | null | undefined) {
+  if (!programKey) {
+    return null;
+  }
+
+  const program = await prisma.catalogStudyProgram.findUnique({
+    where: { key: programKey },
+    select: { key: true, label: true }
+  });
+  if (!program) {
+    throw new HttpError(400, "Studiengang nicht gefunden.");
+  }
+
+  return program;
+}
+
 async function ensureCategory(planId: string, categoryId: string | null | undefined) {
   if (!categoryId) {
     return;
@@ -257,9 +284,13 @@ function handlePrismaConstraint(error: unknown): never {
 
 export const plansRouter = Router();
 
-plansRouter.post("/", async (_req, res) => {
+plansRouter.post("/", async (req, res) => {
+  const payload = planCreateSchema.parse(req.body ?? {});
+  await ensureStudyProgram(payload.preferred_study_program_key);
   const plan = await prisma.plan.create({
-    data: {},
+    data: {
+      preferredStudyProgramKey: payload.preferred_study_program_key ?? null
+    },
     include: includePlan
   });
 
@@ -274,12 +305,21 @@ plansRouter.get("/:planId", async (req, res) => {
 plansRouter.patch("/:planId", async (req, res) => {
   const planId = uuidSchema.parse(req.params.planId);
   const payload = planPatchSchema.parse(req.body);
+  await ensureStudyProgram(payload.preferred_study_program_key);
 
   let plan;
   try {
+    const data: Prisma.PlanUncheckedUpdateInput = {};
+    if (payload.name !== undefined) {
+      data.name = payload.name;
+    }
+    if (payload.preferred_study_program_key !== undefined) {
+      data.preferredStudyProgramKey = payload.preferred_study_program_key;
+    }
+
     plan = await prisma.plan.update({
       where: { id: planId },
-      data: { name: payload.name },
+      data,
       include: includePlan
     });
   } catch (error) {
@@ -395,7 +435,10 @@ plansRouter.post("/:planId/courses", async (req, res) => {
 plansRouter.post("/:planId/courses/import-catalog", async (req, res) => {
   const planId = uuidSchema.parse(req.params.planId);
   const payload = catalogImportSchema.parse(req.body);
-  await ensurePlan(planId);
+  const plan = await prisma.plan.findUnique({ where: { id: planId }, select: { id: true, preferredStudyProgramKey: true } });
+  if (!plan) {
+    throw new HttpError(404, "Plan nicht gefunden.");
+  }
   await ensureCategory(planId, payload.category_id);
 
   const catalogCourse = await prisma.catalogCourse.findUnique({
@@ -405,6 +448,19 @@ plansRouter.post("/:planId/courses/import-catalog", async (req, res) => {
 
   if (!catalogCourse) {
     throw new HttpError(404, "Katalogkurs nicht gefunden.");
+  }
+
+  const selectedProgramKey = payload.program_key ?? plan.preferredStudyProgramKey;
+  const selectedProgram = await ensureStudyProgram(selectedProgramKey);
+  const programmeMatches = (await findProgrammeMatchesForCourseNumber(catalogCourse.courseNumber)).map(serializeProgrammeMatch);
+  const selectedProgrammeMatch = selectedProgramKey
+    ? programmeMatches.find((entry) => entry.program_key === selectedProgramKey) ?? null
+    : null;
+  const selectedProgrammeCp = selectedProgrammeMatch?.cp && selectedProgrammeMatch.cp > 0 ? selectedProgrammeMatch.cp : null;
+  const tucanCp = catalogCourse.cp && catalogCourse.cp > 0 ? catalogCourse.cp : null;
+  const cp = selectedProgrammeCp ?? tucanCp ?? payload.cp_override;
+  if (!cp) {
+    throw new HttpError(400, "CP-Angabe ist für den Import erforderlich.");
   }
 
   const selected = selectedCatalogAppointmentData(catalogCourse, payload.selected_subgroup_key);
@@ -417,10 +473,16 @@ plansRouter.post("/:planId/courses/import-catalog", async (req, res) => {
       catalogAppointmentsFingerprint: appointmentFingerprint(selected.appointments),
       catalogSubgroupKey: payload.selected_subgroup_key ?? null,
       catalogSubgroupTitle: selected.subgroupTitle,
+      catalogProgramKey: selectedProgram?.key ?? selectedProgrammeMatch?.program_key ?? null,
+      catalogProgramLabel: selectedProgram?.label ?? selectedProgrammeMatch?.program_label ?? null,
+      catalogProgramPoLabel: selectedProgrammeMatch?.po_label ?? null,
+      catalogProgramClassPath: selectedProgrammeMatch?.class_path ?? [],
+      catalogProgramModuleNumber: selectedProgrammeMatch?.module_number ?? null,
+      catalogProgramModuleTitle: selectedProgrammeMatch?.module_title ?? null,
       categoryId: payload.category_id ?? null,
       name: catalogCourse.title,
       abbreviation: payload.abbreviation ?? catalogCourse.abbreviation ?? catalogCourse.courseNumber ?? catalogCourse.title.slice(0, 32),
-      cp: payload.cp_override ?? (catalogCourse.cp && catalogCourse.cp > 0 ? catalogCourse.cp : 6),
+      cp,
       courseNumber: catalogCourse.courseNumber,
       appointments: {
         createMany: {

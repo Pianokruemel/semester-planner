@@ -2,13 +2,20 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchCatalogCourse, searchCatalogCourses, type CatalogCourseCard, type CatalogCourseDetail } from "../api/catalog";
+import {
+  fetchCatalogCourse,
+  fetchCatalogProgrammes,
+  searchCatalogCourses,
+  type CatalogCourseCard,
+  type CatalogCourseDetail
+} from "../api/catalog";
 import { usePlannerStore } from "../planner/store";
 import { CatalogPage } from "./CatalogPage";
 
 vi.mock("../api/catalog", () => ({
   searchCatalogCourses: vi.fn(),
-  fetchCatalogCourse: vi.fn()
+  fetchCatalogCourse: vi.fn(),
+  fetchCatalogProgrammes: vi.fn()
 }));
 
 vi.mock("../planner/store", () => ({
@@ -17,6 +24,7 @@ vi.mock("../planner/store", () => ({
 
 const mockedSearchCatalogCourses = vi.mocked(searchCatalogCourses);
 const mockedFetchCatalogCourse = vi.mocked(fetchCatalogCourse);
+const mockedFetchCatalogProgrammes = vi.mocked(fetchCatalogProgrammes);
 const mockedUsePlannerStore = vi.mocked(usePlannerStore);
 const importCatalogCourse = vi.fn();
 
@@ -31,6 +39,17 @@ const catalogCard: CatalogCourseCard = {
   faculty: "FB20 Informatik",
   path: ["Vorlesungsverzeichnis", "Informatik"],
   instructors: ["Ada Lovelace"],
+  programmes: [
+    {
+      program_key: "bsc-informatik",
+      program_label: "B. Sc. Informatik",
+      po_label: "PO 2023",
+      cp: 5,
+      class_path: ["Pflichtbereich"],
+      module_number: "20-00-1234",
+      module_title: "Mobile UI"
+    }
+  ],
   appointment_count: 1,
   first_date: "2026-04-27",
   last_date: "2026-04-27"
@@ -86,8 +105,18 @@ describe("CatalogPage mobile detail sheet", () => {
     vi.clearAllMocks();
     mockedSearchCatalogCourses.mockResolvedValue({ items: [catalogCard], page: 1, limit: 25, has_more: false });
     mockedFetchCatalogCourse.mockResolvedValue(catalogDetail);
+    mockedFetchCatalogProgrammes.mockResolvedValue([
+      {
+        program_key: "bsc-informatik",
+        program_label: "B. Sc. Informatik",
+        page_url: "https://example.test/bsc",
+        latest_document: null
+      }
+    ]);
     mockedUsePlannerStore.mockReturnValue({
-      importCatalogCourse
+      importCatalogCourse,
+      preferredStudyProgramKey: "bsc-informatik",
+      setPreferredStudyProgram: vi.fn()
     } as unknown as ReturnType<typeof usePlannerStore>);
     Object.defineProperty(window, "matchMedia", {
       configurable: true,
@@ -122,6 +151,7 @@ describe("CatalogPage mobile detail sheet", () => {
 
     expect(await screen.findByRole("heading", { name: catalogDetail.title })).toBeInTheDocument();
     expect(screen.getAllByText("Uebung 1").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("B. Sc. Informatik").length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: "Zurück" }));
 
@@ -139,8 +169,22 @@ describe("CatalogPage mobile detail sheet", () => {
     await waitFor(() =>
       expect(importCatalogCourse).toHaveBeenCalledWith({
         catalog_course_id: "catalog-1",
+        program_key: "bsc-informatik",
         selected_subgroup_key: "group-1"
       })
     );
+  });
+
+  it("prompts for CP only when neither selected programme nor TUCaN provides CP", async () => {
+    mockedFetchCatalogCourse.mockResolvedValue({ ...catalogDetail, cp: null, programmes: [] });
+    importCatalogCourse.mockResolvedValue({ courseId: "planned-1" });
+    renderCatalogPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: /Sehr lange Veranstaltung/ }));
+    await screen.findByRole("heading", { name: catalogDetail.title });
+    fireEvent.click(screen.getByRole("button", { name: "Zum Plan hinzufügen" }));
+
+    expect(importCatalogCourse).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "CP bestätigen und hinzufügen" })).toBeInTheDocument();
   });
 });

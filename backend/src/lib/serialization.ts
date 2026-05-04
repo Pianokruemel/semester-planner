@@ -1,6 +1,7 @@
 import { CatalogAppointment, CatalogCourse, PlanCategory, PlannedAppointment, PlannedCourse, PlannedExam, Prisma } from "@prisma/client";
 import { appointmentFingerprint, appointmentTimePlaceKey, plannedAppointmentsFromCatalog } from "./catalogSync";
 import { dateFromYmd, ymdFromDate } from "./dates";
+import { CatalogProgrammeMatch } from "./moduleHandbooks";
 
 type PlannedCourseWithRelations = PlannedCourse & {
   category: PlanCategory | null;
@@ -16,6 +17,7 @@ type PlannedCourseWithRelations = PlannedCourse & {
 type PlanWithRelations = {
   id: string;
   name: string;
+  preferredStudyProgramKey: string | null;
   categories: PlanCategory[];
   courses: PlannedCourseWithRelations[];
 };
@@ -71,6 +73,12 @@ export function serializePlannedCourse(course: PlannedCourseWithRelations) {
     catalog_is_modified: catalogSync.isModified,
     catalog_subgroup_key: course.catalogSubgroupKey,
     catalog_subgroup_title: course.catalogSubgroupTitle,
+    catalog_program_key: course.catalogProgramKey,
+    catalog_program_label: course.catalogProgramLabel,
+    catalog_program_po_label: course.catalogProgramPoLabel,
+    catalog_program_class_path: course.catalogProgramClassPath,
+    catalog_program_module_number: course.catalogProgramModuleNumber,
+    catalog_program_module_title: course.catalogProgramModuleTitle,
     name: course.name,
     abbreviation: course.abbreviation,
     cp: course.cp,
@@ -214,6 +222,7 @@ export function serializePlan(plan: PlanWithRelations) {
   return {
     id: plan.id,
     name: plan.name,
+    preferred_study_program_key: plan.preferredStudyProgramKey,
     categories: plan.categories
       .slice()
       .sort((left, right) => left.position - right.position || left.name.localeCompare(right.name, "de"))
@@ -228,6 +237,7 @@ export function serializePlan(plan: PlanWithRelations) {
 export function serializeCatalogCourse(
   course: CatalogCourse & {
     appointments?: CatalogAppointment[];
+    programmes?: CatalogProgrammeMatch[];
   }
 ) {
   return {
@@ -250,6 +260,7 @@ export function serializeCatalogCourse(
     first_date: course.firstDate ? ymdFromDate(course.firstDate) : null,
     last_date: course.lastDate ? ymdFromDate(course.lastDate) : null,
     appointment_count: course.appointmentCount,
+    programmes: course.programmes ?? [],
     last_scanned_at: course.lastScannedAt.toISOString(),
     appointments: course.appointments?.map(serializeAppointment) ?? undefined
   };

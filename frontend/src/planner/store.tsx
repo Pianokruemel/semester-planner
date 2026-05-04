@@ -15,7 +15,8 @@ import {
   refreshCatalogCourse as refreshCatalogCourseRequest,
   updateCategory as updateCategoryRequest,
   updateCourse as updateCourseRequest,
-  updatePlanName
+  updatePlanName,
+  updatePlanPreferredStudyProgram
 } from "../api/plans";
 import {
   PlannerSnapshot,
@@ -37,6 +38,7 @@ type PlannerContextValue = {
   snapshot: PlannerSnapshot | null;
   planId: string | null;
   planName: string | null;
+  preferredStudyProgramKey: string | null;
   uiPreferences: UiPreferences;
   hasCurrentPlanner: boolean;
   hasPersistedDraft: boolean;
@@ -46,6 +48,7 @@ type PlannerContextValue = {
   resumePersistedDraft: () => void;
   updateUiPreferences: (patch: UiPreferencesPatch) => void;
   renamePlan: (name: string) => Promise<void>;
+  setPreferredStudyProgram: (programKey: string | null) => Promise<void>;
   createCategory: (payload: { name: string; color: string }) => Promise<SnapshotCategory>;
   updateCategory: (payload: { id: string; name: string; color: string }) => Promise<SnapshotCategory>;
   deleteCategory: (payload: { id: string; confirm?: boolean }) => Promise<void>;
@@ -63,6 +66,7 @@ type PlannerContextValue = {
     category_id?: string | null;
     abbreviation?: string;
     cp_override?: number;
+    program_key?: string | null;
     selected_subgroup_key?: string | null;
   }) => Promise<{ courseId: string }>;
 };
@@ -194,6 +198,10 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
     setLoadedPlan(await updatePlanName(ensurePlanId(planId), name));
   }
 
+  async function setPreferredStudyProgram(programKey: string | null) {
+    setLoadedPlan(await updatePlanPreferredStudyProgram(ensurePlanId(planId), programKey));
+  }
+
   async function createCategory(payload: { name: string; color: string }) {
     const nextPlan = await createCategoryRequest(ensurePlanId(planId), payload);
     setLoadedPlan(nextPlan);
@@ -293,6 +301,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
     category_id?: string | null;
     abbreviation?: string;
     cp_override?: number;
+    program_key?: string | null;
     selected_subgroup_key?: string | null;
   }) {
     const result = await importCatalogCourseRequest(ensurePlanId(planId), payload);
@@ -305,6 +314,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
       snapshot: plan,
       planId,
       planName: plan?.name ?? null,
+      preferredStudyProgramKey: plan?.preferred_study_program_key ?? null,
       uiPreferences,
       hasCurrentPlanner: Boolean(plan),
       hasPersistedDraft: Boolean(readStoredPlanId()),
@@ -314,6 +324,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
       resumePersistedDraft,
       updateUiPreferences,
       renamePlan,
+      setPreferredStudyProgram,
       createCategory,
       updateCategory,
       deleteCategory,

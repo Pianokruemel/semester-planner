@@ -15,7 +15,8 @@
   },
   "dependencies": {
     "@semester-planner/shared": "file:../packages/shared",
-    "cheerio": "^1.1.2"
+    "cheerio": "^1.1.2",
+    "pdfjs-dist": "^5.7.284"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",

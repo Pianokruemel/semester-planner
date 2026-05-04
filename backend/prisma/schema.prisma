@@ -8,12 +8,14 @@ datasource db {
 }
 
 model Plan {
-  id         String          @id @default(uuid()) @db.Uuid
-  name       String          @default("Mein Stundenplan")
-  createdAt  DateTime        @default(now()) @map("created_at")
-  updatedAt  DateTime        @updatedAt @map("updated_at")
-  categories PlanCategory[]
-  courses    PlannedCourse[]
+  id                       String               @id @default(uuid()) @db.Uuid
+  name                     String               @default("Mein Stundenplan")
+  preferredStudyProgramKey String?              @map("preferred_study_program_key")
+  preferredStudyProgram    CatalogStudyProgram? @relation(fields: [preferredStudyProgramKey], references: [key], onDelete: SetNull)
+  createdAt                DateTime             @default(now()) @map("created_at")
+  updatedAt                DateTime             @updatedAt @map("updated_at")
+  categories               PlanCategory[]
+  courses                  PlannedCourse[]
 
   @@map("plans")
 }
@@ -45,6 +47,12 @@ model PlannedCourse {
   catalogAppointmentsFingerprint String?              @map("catalog_appointments_fingerprint") @db.VarChar(64)
   catalogSubgroupKey             String?              @map("catalog_subgroup_key")
   catalogSubgroupTitle           String?              @map("catalog_subgroup_title")
+  catalogProgramKey              String?              @map("catalog_program_key")
+  catalogProgramLabel            String?              @map("catalog_program_label")
+  catalogProgramPoLabel          String?              @map("catalog_program_po_label")
+  catalogProgramClassPath        String[]             @default([]) @map("catalog_program_class_path")
+  catalogProgramModuleNumber     String?              @map("catalog_program_module_number")
+  catalogProgramModuleTitle      String?              @map("catalog_program_module_title")
   categoryId                     String?              @map("category_id") @db.Uuid
   category                       PlanCategory?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   name                           String
@@ -59,6 +67,7 @@ model PlannedCourse {
 
   @@index([planId])
   @@index([catalogCourseId])
+  @@index([catalogProgramKey])
   @@index([categoryId])
   @@index([courseNumber])
   @@map("planned_courses")
@@ -140,6 +149,68 @@ model CatalogCourse {
   @@index([title])
   @@index([faculty])
   @@map("catalog_courses")
+}
+
+model CatalogStudyProgram {
+  key       String                   @id
+  label     String
+  pageUrl   String                   @map("page_url") @db.Text
+  createdAt DateTime                 @default(now()) @map("created_at")
+  updatedAt DateTime                 @updatedAt @map("updated_at")
+  documents ModuleHandbookDocument[]
+  courses   ModuleHandbookCourse[]
+  plans     Plan[]
+
+  @@index([label])
+  @@map("catalog_study_programs")
+}
+
+model ModuleHandbookDocument {
+  id            String                 @id @default(uuid()) @db.Uuid
+  programKey    String                 @map("program_key")
+  program       CatalogStudyProgram    @relation(fields: [programKey], references: [key], onDelete: Cascade)
+  poLabel       String                 @map("po_label")
+  pdfUrl        String                 @map("pdf_url") @db.Text
+  pdfLabel      String                 @map("pdf_label")
+  contentHash   String                 @map("content_hash") @db.VarChar(64)
+  etag          String?
+  lastModified  String?                @map("last_modified")
+  fetchStatus   String                 @map("fetch_status")
+  parseStatus   String                 @map("parse_status")
+  errorText     String?                @map("error_text") @db.Text
+  fetchedAt     DateTime               @default(now()) @map("fetched_at")
+  parsedAt      DateTime?              @map("parsed_at")
+  createdAt     DateTime               @default(now()) @map("created_at")
+  updatedAt     DateTime               @updatedAt @map("updated_at")
+  courses       ModuleHandbookCourse[]
+
+  @@unique([programKey, poLabel, pdfUrl])
+  @@index([programKey])
+  @@index([contentHash])
+  @@map("module_handbook_documents")
+}
+
+model ModuleHandbookCourse {
+  id                     String                 @id @default(uuid()) @db.Uuid
+  documentId             String                 @map("document_id") @db.Uuid
+  document               ModuleHandbookDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  programKey             String                 @map("program_key")
+  program                CatalogStudyProgram    @relation(fields: [programKey], references: [key], onDelete: Cascade)
+  poLabel                String                 @map("po_label")
+  moduleNumber           String                 @map("module_number")
+  courseNumber           String?                @map("course_number")
+  normalizedCourseNumber String?                @map("normalized_course_number")
+  moduleTitle            String                 @map("module_title")
+  cp                     Int?
+  classPath              String[]               @default([]) @map("class_path")
+  pageNumber             Int?                   @map("page_number")
+  createdAt              DateTime               @default(now()) @map("created_at")
+
+  @@index([programKey])
+  @@index([poLabel])
+  @@index([moduleNumber])
+  @@index([normalizedCourseNumber])
+  @@map("module_handbook_courses")
 }
 
 model CatalogAppointment {
