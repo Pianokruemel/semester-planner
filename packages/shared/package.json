@@ -13,12 +13,19 @@
     "./appointmentParser": {
       "types": "./dist/appointmentParser.d.ts",
       "default": "./dist/appointmentParser.js"
+    },
+    "./examWorkbook": {
+      "types": "./dist/examWorkbook.d.ts",
+      "default": "./dist/examWorkbook.js"
     }
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run"
+  },
+  "dependencies": {
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "typescript": "^6.0.2",

@@ -8,6 +8,7 @@ export type ScannerConfig = {
   startUrl: string | null;
   batchSize: number;
   moduleHandbookOverviewUrl: string;
+  examPlanOverviewUrl: string;
 };
 
 export function readConfig(env = process.env): ScannerConfig {
@@ -22,6 +23,9 @@ export function readConfig(env = process.env): ScannerConfig {
     batchSize: Number(env.SCAN_BATCH_SIZE ?? 25),
     moduleHandbookOverviewUrl:
       env.MODULE_HANDBOOK_OVERVIEW_URL ??
-      "https://www.informatik.tu-darmstadt.de/studium_fb20/im_studium/formulare_und_dokumente/ordnungen/index.de.jsp"
+      "https://www.informatik.tu-darmstadt.de/studium_fb20/im_studium/formulare_und_dokumente/ordnungen/index.de.jsp",
+    examPlanOverviewUrl:
+      env.EXAM_PLAN_OVERVIEW_URL ??
+      "https://www.intern.tu-darmstadt.de/verwaltung/dez_ii/campusmanagement/cm_lvm/pruefungstermine_zentral/index.de.jsp"
   };
 }

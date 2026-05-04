@@ -1,5 +1,7 @@
 import { setTimeout as sleep } from "node:timers/promises";
+import { parseExamWorkbookBuffer } from "@semester-planner/shared/examWorkbook";
 import { readConfig, ScannerConfig } from "./config.js";
+import { discoverExamPlanLinks, ExamPlanLink, selectNewestExamPlanLink } from "./examPlans.js";
 import {
   discoverStudyProgramPages,
   findCurrentModuleHandbookLink,
@@ -58,7 +60,7 @@ async function fetchBytes(
   }
 
   if (!response.ok) {
-    throw new Error(`PDF request failed ${response.status}: ${url}`);
+    throw new Error(`Binary request failed ${response.status}: ${url}`);
   }
 
   return {
@@ -186,6 +188,89 @@ async function fetchHandbookStatus(config: ScannerConfig, link: ModuleHandbookLi
   return (await response.json()) as { content_hash: string; etag: string | null; last_modified: string | null } | null;
 }
 
+async function fetchExamPlanStatus(config: ScannerConfig, link: ExamPlanLink): Promise<{
+  content_hash: string;
+  etag: string | null;
+  last_modified: string | null;
+  fetch_status: string;
+  parse_status: string;
+} | null> {
+  const params = new URLSearchParams({
+    semester_key: link.semester_key,
+    file_url: link.file_url
+  });
+  const response = await fetch(`${config.backendApiUrl}/catalog/internal/exam-plans/status?${params.toString()}`, {
+    headers: {
+      "x-scanner-token": config.scannerToken
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Backend exam plan status failed ${response.status}: ${await response.text()}`);
+  }
+
+  return (await response.json()) as {
+    content_hash: string;
+    etag: string | null;
+    last_modified: string | null;
+    fetch_status: string;
+    parse_status: string;
+  } | null;
+}
+
+async function ingestExamPlan(
+  config: ScannerConfig,
+  link: ExamPlanLink,
+  document: {
+    content_hash: string;
+    etag: string | null;
+    last_modified: string | null;
+    fetch_status: string;
+    parse_status: string;
+    error_text?: string | null;
+    rows: ReturnType<typeof parseExamWorkbookBuffer>;
+  }
+) {
+  const response = await fetch(`${config.backendApiUrl}/catalog/internal/exam-plans`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-scanner-token": config.scannerToken
+    },
+    body: JSON.stringify({
+      semester_key: link.semester_key,
+      semester_index: link.semester_index,
+      file_url: link.file_url,
+      file_label: link.file_label,
+      content_hash: document.content_hash,
+      etag: document.etag,
+      last_modified: document.last_modified,
+      fetch_status: document.fetch_status,
+      parse_status: document.parse_status,
+      error_text: document.error_text ?? null,
+      rows: document.rows.map((row) => ({
+        row_number: row.rowNumber,
+        weekday: row.weekday,
+        date: row.date,
+        time_from: row.timeFrom,
+        time_to: row.timeTo,
+        appointment_type: row.appointmentType,
+        lecturer: row.lecturer,
+        course_name: row.courseName,
+        extracted_course_numbers: row.extractedCourseNumbers,
+        parse_error: row.parseError
+      }))
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Backend exam plan ingest failed ${response.status}: ${await response.text()}`);
+  }
+
+  const result = await response.json();
+  console.log(`exam_plan_ingested ${JSON.stringify(result)}`);
+}
+
 async function ingestModuleHandbooks(
   config: ScannerConfig,
   programmes: StudyProgramPage[],
@@ -288,6 +373,55 @@ async function enrichModuleHandbooks(config: ScannerConfig) {
   }
 
   await ingestModuleHandbooks(config, programmePages, documents);
+}
+
+async function enrichExamPlans(config: ScannerConfig) {
+  console.log(`exam_plan_overview url=${config.examPlanOverviewUrl}`);
+  const overviewHtml = await fetchText(config.examPlanOverviewUrl);
+  const links = discoverExamPlanLinks(overviewHtml, config.examPlanOverviewUrl);
+  const newest = selectNewestExamPlanLink(links);
+
+  if (!newest) {
+    console.warn("exam_plan_missing reason=no_xlsx_semester_link");
+    return;
+  }
+
+  console.log(
+    `exam_plan_selected semester="${newest.semester_key}" index=${newest.semester_index} label="${newest.file_label}" url=${newest.file_url}`
+  );
+  const previous = await fetchExamPlanStatus(config, newest);
+  await sleep(config.rateLimitMs);
+  const fetched = await fetchBytes(newest.file_url);
+  const contentHash = sha256Hex(fetched.bytes);
+
+  if (previous?.content_hash === contentHash && previous.parse_status === "parsed") {
+    console.log(`exam_plan_unchanged semester="${newest.semester_key}" reason=same_hash`);
+    return;
+  }
+
+  try {
+    const rows = parseExamWorkbookBuffer(fetched.bytes);
+    await ingestExamPlan(config, newest, {
+      content_hash: contentHash,
+      etag: fetched.etag,
+      last_modified: fetched.lastModified,
+      fetch_status: "fetched",
+      parse_status: "parsed",
+      rows
+    });
+    console.log(`exam_plan_parsed semester="${newest.semester_key}" rows=${rows.length}`);
+  } catch (error) {
+    await ingestExamPlan(config, newest, {
+      content_hash: contentHash,
+      etag: fetched.etag,
+      last_modified: fetched.lastModified,
+      fetch_status: "fetched",
+      parse_status: "failed",
+      error_text: error instanceof Error ? error.message : String(error),
+      rows: []
+    });
+    throw error;
+  }
 }
 
 async function scanOnce(config: ScannerConfig) {
@@ -402,6 +536,12 @@ async function scanOnce(config: ScannerConfig) {
     await enrichModuleHandbooks(config);
   } catch (error) {
     console.error("module_handbooks_failed", error);
+  }
+
+  try {
+    await enrichExamPlans(config);
+  } catch (error) {
+    console.error("exam_plans_failed", error);
   }
 }
 

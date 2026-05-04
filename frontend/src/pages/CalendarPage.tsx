@@ -30,6 +30,7 @@ type CalendarEvent = {
   end: Date;
   courseId: string;
   color: string;
+  textColor: string;
   room: string;
   type: AppointmentType;
 };
@@ -102,6 +103,20 @@ function CalendarEventBubble({ event }: { event: CalendarEvent }) {
       {event.details ? <span>{event.details}</span> : null}
     </div>
   );
+}
+
+function textColorForBackground(hexColor: string) {
+  const match = hexColor.match(/^#?([0-9a-f]{6})$/i);
+  if (!match) {
+    return "#ffffff";
+  }
+
+  const value = match[1]!;
+  const red = Number.parseInt(value.slice(0, 2), 16);
+  const green = Number.parseInt(value.slice(2, 4), 16);
+  const blue = Number.parseInt(value.slice(4, 6), 16);
+  const luminance = (0.299 * red + 0.587 * green + 0.114 * blue) / 255;
+  return luminance > 0.62 ? "#0f172a" : "#ffffff";
 }
 
 export function CalendarPage({ showFullName }: Props) {
@@ -268,6 +283,7 @@ export function CalendarPage({ showFullName }: Props) {
               end,
               courseId: course.id,
               color: course.category?.color ?? "#6366F1",
+              textColor: textColorForBackground(course.category?.color ?? "#6366F1"),
               room: appointment.room,
               type: appointment.type
             } satisfies CalendarEvent;
@@ -607,7 +623,7 @@ export function CalendarPage({ showFullName }: Props) {
                 backgroundColor: event.color,
                 borderRadius: "10px",
                 border: "none",
-                color: "#ffffff",
+                color: event.textColor,
                 cursor: "pointer"
               }
             })}

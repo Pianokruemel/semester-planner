@@ -53,6 +53,10 @@ export function serializeCategory(category: PlanCategory, courseCount = 0) {
     name: category.name,
     color: category.color,
     position: category.position,
+    source: category.source,
+    curriculum_category_key: category.curriculumCategoryKey,
+    required_cp_min: category.requiredCpMin,
+    required_cp_max: category.requiredCpMax,
     _count: {
       courses: courseCount
     }

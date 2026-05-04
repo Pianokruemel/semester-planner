@@ -6,8 +6,21 @@ export type CatalogProgrammeMatch = {
   po_label: string;
   cp: number | null;
   class_path: string[];
+  category_key: string | null;
+  category_name: string | null;
+  category_required_cp_min: number | null;
+  category_required_cp_max: number | null;
   module_number: string;
   module_title: string;
+};
+
+export type CatalogCurriculumCategory = {
+  category_key: string;
+  name: string;
+  required_cp_min: number | null;
+  required_cp_max: number | null;
+  color: string;
+  position: number;
 };
 
 export type CatalogCourseCard = {
@@ -46,6 +59,7 @@ export type CatalogStudyProgram = {
   program_key: string;
   program_label: string;
   page_url: string;
+  curriculum_categories: CatalogCurriculumCategory[];
   latest_document: {
     po_label: string;
     pdf_url: string;

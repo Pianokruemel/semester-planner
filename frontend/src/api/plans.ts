@@ -14,8 +14,10 @@ function normalizePlan(input: BackendPlan): BackendPlan {
   };
 }
 
-export async function createPlan(): Promise<BackendPlan> {
-  const response = await apiClient.post<BackendPlan>("/plans");
+export async function createPlan(preferredStudyProgramKey: string): Promise<BackendPlan> {
+  const response = await apiClient.post<BackendPlan>("/plans", {
+    preferred_study_program_key: preferredStudyProgramKey
+  });
   return normalizePlan(response.data);
 }
 
@@ -31,7 +33,7 @@ export async function updatePlanName(planId: string, name: string): Promise<Back
 
 export async function updatePlanPreferredStudyProgram(
   planId: string,
-  preferredStudyProgramKey: string | null
+  preferredStudyProgramKey: string
 ): Promise<BackendPlan> {
   const response = await apiClient.patch<BackendPlan>(`/plans/${encodeURIComponent(planId)}`, {
     preferred_study_program_key: preferredStudyProgramKey
@@ -69,7 +71,7 @@ export type CoursePayload = {
   name: string;
   abbreviation: string;
   cp: number;
-  category_id: string | null;
+  category_id: string;
   course_number: string | null;
   appointments_raw: string;
 };
@@ -129,6 +131,44 @@ export async function deleteExam(planId: string, courseId: string): Promise<Back
   return normalizePlan(response.data);
 }
 
+export type ExamCandidateSource = {
+  document_id: string;
+  semester_key: string;
+  semester_index: number;
+  file_url: string;
+  file_label: string;
+  content_hash: string;
+  fetched_at: string;
+  parsed_at: string | null;
+};
+
+export type PlanExamCandidateGroup = {
+  course_id: string;
+  catalog_course_id: string;
+  course_name: string;
+  course_number: string | null;
+  has_existing_exam: boolean;
+  candidates: Array<{
+    candidate_id: string;
+    date: string;
+    time_from: string;
+    time_to: string;
+    exam_title: string;
+    appointment_type: string | null;
+    lecturer: string | null;
+    match_reasons: string[];
+  }>;
+};
+
+export async function fetchExamCandidates(
+  planId: string
+): Promise<{ source: ExamCandidateSource | null; items: PlanExamCandidateGroup[] }> {
+  const response = await apiClient.get<{ source: ExamCandidateSource | null; items: PlanExamCandidateGroup[] }>(
+    `/plans/${encodeURIComponent(planId)}/exam-candidates`
+  );
+  return response.data;
+}
+
 export async function importCatalogCourse(
   planId: string,
   payload: {
@@ -136,7 +176,6 @@ export async function importCatalogCourse(
     category_id?: string | null;
     abbreviation?: string;
     cp_override?: number;
-    program_key?: string | null;
     selected_subgroup_key?: string | null;
   }
 ): Promise<{ plan: BackendPlan; course_id: string }> {

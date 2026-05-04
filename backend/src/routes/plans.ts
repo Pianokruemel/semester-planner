@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { appointmentFingerprint, appointmentTimePlaceKey, plannedAppointmentsFromCatalog } from "../lib/catalogSync";
+import { requirementsForProgram } from "../lib/curriculum";
 import { dateFromYmd } from "../lib/dates";
 import { findProgrammeMatchesForCourseNumber, serializeProgrammeMatch } from "../lib/moduleHandbooks";
 import { prisma } from "../lib/prisma";
@@ -31,13 +32,13 @@ const includePlan = {
 } satisfies Prisma.PlanInclude;
 
 const planCreateSchema = z.object({
-  preferred_study_program_key: z.string().trim().min(1).nullable().optional()
+  preferred_study_program_key: z.string().trim().min(1)
 });
 
 const planPatchSchema = z
   .object({
     name: z.string().trim().min(1).max(200).optional(),
-    preferred_study_program_key: z.string().trim().min(1).nullable().optional()
+    preferred_study_program_key: z.string().trim().min(1).optional()
   })
   .refine((payload) => Object.keys(payload).length > 0, {
     message: "Mindestens ein Feld ist erforderlich."
@@ -57,7 +58,7 @@ const manualCourseSchema = z.object({
   name: z.string().trim().min(1),
   abbreviation: z.string().trim().min(1).max(32),
   cp: z.number().int().positive(),
-  category_id: uuidSchema.nullable().optional(),
+  category_id: uuidSchema,
   course_number: z.string().trim().min(1).nullable().optional(),
   appointments_raw: z.string().default("")
 });
@@ -67,7 +68,7 @@ const coursePatchSchema = z
     name: z.string().trim().min(1).optional(),
     abbreviation: z.string().trim().min(1).max(32).optional(),
     cp: z.number().int().positive().optional(),
-    category_id: uuidSchema.nullable().optional(),
+    category_id: uuidSchema.optional(),
     course_number: z.string().trim().min(1).nullable().optional(),
     is_active: z.boolean().optional(),
     appointments_raw: z.string().optional()
@@ -81,7 +82,6 @@ const catalogImportSchema = z.object({
   category_id: uuidSchema.nullable().optional(),
   abbreviation: z.string().trim().min(1).max(32).optional(),
   cp_override: z.number().int().positive().optional(),
-  program_key: z.string().trim().min(1).nullable().optional(),
   selected_subgroup_key: z.string().trim().min(1).nullable().optional()
 });
 
@@ -274,6 +274,63 @@ async function ensureCategory(planId: string, categoryId: string | null | undefi
   }
 }
 
+async function syncCurriculumCategories(tx: Prisma.TransactionClient, planId: string, programKey: string) {
+  for (const requirement of requirementsForProgram(programKey)) {
+    const existingByKey = await tx.planCategory.findFirst({
+      where: { planId, curriculumCategoryKey: requirement.key },
+      select: { id: true }
+    });
+
+    if (existingByKey) {
+      await tx.planCategory.update({
+        where: { id: existingByKey.id },
+        data: {
+          name: requirement.name,
+          color: requirement.color,
+          position: requirement.position,
+          source: "curriculum",
+          requiredCpMin: requirement.requiredCpMin,
+          requiredCpMax: requirement.requiredCpMax
+        }
+      });
+      continue;
+    }
+
+    const existingByName = await tx.planCategory.findFirst({
+      where: { planId, name: requirement.name },
+      select: { id: true }
+    });
+
+    if (existingByName) {
+      await tx.planCategory.update({
+        where: { id: existingByName.id },
+        data: {
+          color: requirement.color,
+          position: requirement.position,
+          source: "curriculum",
+          curriculumCategoryKey: requirement.key,
+          requiredCpMin: requirement.requiredCpMin,
+          requiredCpMax: requirement.requiredCpMax
+        }
+      });
+      continue;
+    }
+
+    await tx.planCategory.create({
+      data: {
+        planId,
+        name: requirement.name,
+        color: requirement.color,
+        position: requirement.position,
+        source: "curriculum",
+        curriculumCategoryKey: requirement.key,
+        requiredCpMin: requirement.requiredCpMin,
+        requiredCpMax: requirement.requiredCpMax
+      }
+    });
+  }
+}
+
 function handlePrismaConstraint(error: unknown): never {
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
     throw new HttpError(409, "Datensatz existiert bereits.");
@@ -287,11 +344,20 @@ export const plansRouter = Router();
 plansRouter.post("/", async (req, res) => {
   const payload = planCreateSchema.parse(req.body ?? {});
   await ensureStudyProgram(payload.preferred_study_program_key);
-  const plan = await prisma.plan.create({
-    data: {
-      preferredStudyProgramKey: payload.preferred_study_program_key ?? null
-    },
-    include: includePlan
+  const plan = await prisma.$transaction(async (tx) => {
+    const created = await tx.plan.create({
+      data: {
+        preferredStudyProgramKey: payload.preferred_study_program_key
+      },
+      select: { id: true }
+    });
+
+    await syncCurriculumCategories(tx, created.id, payload.preferred_study_program_key);
+
+    return tx.plan.findUniqueOrThrow({
+      where: { id: created.id },
+      include: includePlan
+    });
   });
 
   res.status(201).json(serializePlan(plan));
@@ -314,13 +380,27 @@ plansRouter.patch("/:planId", async (req, res) => {
       data.name = payload.name;
     }
     if (payload.preferred_study_program_key !== undefined) {
+      const courseCount = await prisma.plannedCourse.count({ where: { planId } });
+      if (courseCount > 0) {
+        throw new HttpError(409, "Studiengang kann nicht geändert werden, nachdem Kurse angelegt wurden.");
+      }
       data.preferredStudyProgramKey = payload.preferred_study_program_key;
     }
 
-    plan = await prisma.plan.update({
-      where: { id: planId },
-      data,
-      include: includePlan
+    plan = await prisma.$transaction(async (tx) => {
+      await tx.plan.update({
+        where: { id: planId },
+        data
+      });
+
+      if (payload.preferred_study_program_key) {
+        await syncCurriculumCategories(tx, planId, payload.preferred_study_program_key);
+      }
+
+      return tx.plan.findUniqueOrThrow({
+        where: { id: planId },
+        include: includePlan
+      });
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
@@ -363,11 +443,14 @@ plansRouter.patch("/:planId/categories/:categoryId", async (req, res) => {
   const planId = uuidSchema.parse(req.params.planId);
   const categoryId = uuidSchema.parse(req.params.categoryId);
   const payload = categoryPatchSchema.parse(req.body);
-  await ensureCategory(planId, categoryId);
+  const existing = await prisma.planCategory.findFirst({ where: { id: categoryId, planId }, select: { id: true, source: true } });
+  if (!existing) {
+    throw new HttpError(400, "Kategorie nicht gefunden.");
+  }
 
   try {
     const data: Prisma.PlanCategoryUpdateInput = {};
-    if (payload.name !== undefined) {
+    if (payload.name !== undefined && existing.source !== "curriculum") {
       data.name = payload.name;
     }
     if (payload.color !== undefined) {
@@ -391,7 +474,13 @@ plansRouter.patch("/:planId/categories/:categoryId", async (req, res) => {
 plansRouter.delete("/:planId/categories/:categoryId", async (req, res) => {
   const planId = uuidSchema.parse(req.params.planId);
   const categoryId = uuidSchema.parse(req.params.categoryId);
-  await ensureCategory(planId, categoryId);
+  const category = await prisma.planCategory.findFirst({ where: { id: categoryId, planId }, select: { id: true, source: true } });
+  if (!category) {
+    throw new HttpError(400, "Kategorie nicht gefunden.");
+  }
+  if (category.source === "curriculum") {
+    throw new HttpError(409, "Curriculum-Kategorien können nicht gelöscht werden.");
+  }
 
   await prisma.$transaction([
     prisma.plannedCourse.updateMany({ where: { planId, categoryId }, data: { categoryId: null } }),
@@ -404,6 +493,96 @@ plansRouter.delete("/:planId/categories/:categoryId", async (req, res) => {
 plansRouter.get("/:planId/courses", async (req, res) => {
   const planId = uuidSchema.parse(req.params.planId);
   res.json(serializePlan(await fetchPlan(planId)).courses);
+});
+
+plansRouter.get("/:planId/exam-candidates", async (req, res) => {
+  const planId = uuidSchema.parse(req.params.planId);
+  await ensurePlan(planId);
+
+  const plannedCourses = await prisma.plannedCourse.findMany({
+    where: { planId, catalogCourseId: { not: null } },
+    select: {
+      id: true,
+      name: true,
+      courseNumber: true,
+      catalogCourseId: true,
+      exam: true
+    },
+    orderBy: [{ name: "asc" }]
+  });
+  const catalogCourseIds = plannedCourses.flatMap((course) => (course.catalogCourseId ? [course.catalogCourseId] : []));
+  const latestDocument = await prisma.catalogExamPlanDocument.findFirst({
+    where: { parseStatus: "parsed" },
+    orderBy: [{ semesterIndex: "desc" }, { fetchedAt: "desc" }]
+  });
+  const source = latestDocument
+    ? {
+        document_id: latestDocument.id,
+        semester_key: latestDocument.semesterKey,
+        semester_index: latestDocument.semesterIndex,
+        file_url: latestDocument.fileUrl,
+        file_label: latestDocument.fileLabel,
+        content_hash: latestDocument.contentHash,
+        fetched_at: latestDocument.fetchedAt.toISOString(),
+        parsed_at: latestDocument.parsedAt?.toISOString() ?? null
+      }
+    : null;
+
+  if (!latestDocument || catalogCourseIds.length === 0) {
+    res.json({ source, items: [] });
+    return;
+  }
+
+  const matches = await prisma.catalogExamCourseMatch.findMany({
+    where: {
+      catalogCourseId: { in: catalogCourseIds },
+      candidate: { documentId: latestDocument.id }
+    },
+    include: {
+      candidate: true
+    },
+    orderBy: [{ candidate: { date: "asc" } }, { candidate: { timeFrom: "asc" } }]
+  });
+  const matchesByCatalogCourseId = new Map<string, typeof matches>();
+  for (const match of matches) {
+    const entries = matchesByCatalogCourseId.get(match.catalogCourseId) ?? [];
+    entries.push(match);
+    matchesByCatalogCourseId.set(match.catalogCourseId, entries);
+  }
+
+  res.json({
+    source,
+    items: plannedCourses.flatMap((course) => {
+      if (!course.catalogCourseId) {
+        return [];
+      }
+
+      const entries = matchesByCatalogCourseId.get(course.catalogCourseId) ?? [];
+      if (entries.length === 0) {
+        return [];
+      }
+
+      return [
+        {
+          course_id: course.id,
+          catalog_course_id: course.catalogCourseId,
+          course_name: course.name,
+          course_number: course.courseNumber,
+          has_existing_exam: Boolean(course.exam),
+          candidates: entries.map((entry) => ({
+            candidate_id: entry.candidate.id,
+            date: entry.candidate.date.toISOString().slice(0, 10),
+            time_from: entry.candidate.timeFrom,
+            time_to: entry.candidate.timeTo,
+            exam_title: entry.candidate.courseName,
+            appointment_type: entry.candidate.appointmentType,
+            lecturer: entry.candidate.lecturer,
+            match_reasons: entry.matchReasons
+          }))
+        }
+      ];
+    })
+  });
 });
 
 plansRouter.post("/:planId/courses", async (req, res) => {
@@ -439,6 +618,9 @@ plansRouter.post("/:planId/courses/import-catalog", async (req, res) => {
   if (!plan) {
     throw new HttpError(404, "Plan nicht gefunden.");
   }
+  if (!plan.preferredStudyProgramKey) {
+    throw new HttpError(409, "Bitte zuerst einen Studiengang auswählen.");
+  }
   await ensureCategory(planId, payload.category_id);
 
   const catalogCourse = await prisma.catalogCourse.findUnique({
@@ -450,17 +632,29 @@ plansRouter.post("/:planId/courses/import-catalog", async (req, res) => {
     throw new HttpError(404, "Katalogkurs nicht gefunden.");
   }
 
-  const selectedProgramKey = payload.program_key ?? plan.preferredStudyProgramKey;
+  const selectedProgramKey = plan.preferredStudyProgramKey;
   const selectedProgram = await ensureStudyProgram(selectedProgramKey);
   const programmeMatches = (await findProgrammeMatchesForCourseNumber(catalogCourse.courseNumber)).map(serializeProgrammeMatch);
   const selectedProgrammeMatch = selectedProgramKey
     ? programmeMatches.find((entry) => entry.program_key === selectedProgramKey) ?? null
     : null;
   const selectedProgrammeCp = selectedProgrammeMatch?.cp && selectedProgrammeMatch.cp > 0 ? selectedProgrammeMatch.cp : null;
-  const tucanCp = catalogCourse.cp && catalogCourse.cp > 0 ? catalogCourse.cp : null;
-  const cp = selectedProgrammeCp ?? tucanCp ?? payload.cp_override;
+  const cp = selectedProgrammeCp ?? payload.cp_override;
   if (!cp) {
     throw new HttpError(400, "CP-Angabe ist für den Import erforderlich.");
+  }
+  let categoryId = payload.category_id ?? null;
+  if (selectedProgrammeMatch?.category_key) {
+    categoryId =
+      (
+        await prisma.planCategory.findFirst({
+          where: { planId, curriculumCategoryKey: selectedProgrammeMatch.category_key },
+          select: { id: true }
+        })
+      )?.id ?? categoryId;
+  }
+  if (!categoryId) {
+    throw new HttpError(400, "Kategorie ist für den Import erforderlich.");
   }
 
   const selected = selectedCatalogAppointmentData(catalogCourse, payload.selected_subgroup_key);
@@ -479,7 +673,7 @@ plansRouter.post("/:planId/courses/import-catalog", async (req, res) => {
       catalogProgramClassPath: selectedProgrammeMatch?.class_path ?? [],
       catalogProgramModuleNumber: selectedProgrammeMatch?.module_number ?? null,
       catalogProgramModuleTitle: selectedProgrammeMatch?.module_title ?? null,
-      categoryId: payload.category_id ?? null,
+      categoryId,
       name: catalogCourse.title,
       abbreviation: payload.abbreviation ?? catalogCourse.abbreviation ?? catalogCourse.courseNumber ?? catalogCourse.title.slice(0, 32),
       cp,

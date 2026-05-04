@@ -1,7 +1,14 @@
 import { parseAppointments } from "@semester-planner/shared/appointmentParser";
+import {
+  extractCourseNumbers,
+  normalizeCourseTitle,
+  stripBracketContents
+} from "@semester-planner/shared/examWorkbook";
 import { Prisma } from "@prisma/client";
 import { Router } from "express";
+import { createHash } from "node:crypto";
 import { z } from "zod";
+import { requirementsForProgram, serializeRequirement } from "../lib/curriculum";
 import { dateFromYmd } from "../lib/dates";
 import {
   findProgrammeMatchesForCourseNumber,
@@ -88,6 +95,33 @@ const moduleHandbookIngestSchema = z.object({
   documents: z.array(moduleHandbookDocumentSchema).default([])
 });
 
+const examPlanRowSchema = z.object({
+  row_number: z.number().int().positive(),
+  weekday: z.string().nullable().optional(),
+  date: dateSchema.nullable().optional(),
+  time_from: timeSchema.nullable().optional(),
+  time_to: timeSchema.nullable().optional(),
+  appointment_type: z.string().nullable().optional(),
+  lecturer: z.string().nullable().optional(),
+  course_name: z.string(),
+  extracted_course_numbers: z.array(z.string()).default([]),
+  parse_error: z.string().nullable().optional()
+});
+
+const examPlanIngestSchema = z.object({
+  semester_key: z.string().trim().min(1),
+  semester_index: z.number().int(),
+  file_url: z.string().url(),
+  file_label: z.string().trim().min(1),
+  content_hash: z.string().regex(/^[a-f0-9]{64}$/i),
+  etag: z.string().nullable().optional(),
+  last_modified: z.string().nullable().optional(),
+  fetch_status: z.string().trim().min(1).default("fetched"),
+  parse_status: z.string().trim().min(1).default("parsed"),
+  error_text: z.string().nullable().optional(),
+  rows: z.array(examPlanRowSchema).default([])
+});
+
 function requireScannerToken(req: { header(name: string): string | undefined }) {
   const expected = process.env.SCANNER_TOKEN;
   if (!expected) {
@@ -162,6 +196,104 @@ async function findInstructorMatchIds(q: string, semester: string, faculty: stri
   return rows.map((row) => row.id);
 }
 
+type ExamPlanRowInput = z.infer<typeof examPlanRowSchema>;
+
+type ExamCatalogCourse = Awaited<ReturnType<typeof prisma.catalogCourse.findMany>>[number];
+
+function sha256Text(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function normalizeExamCourseNumber(value: string | null | undefined): string | null {
+  return normalizeBaseCourseNumber(value);
+}
+
+function addToIndex<T>(index: Map<string, T[]>, key: string | null | undefined, value: T) {
+  if (!key) {
+    return;
+  }
+
+  const entries = index.get(key) ?? [];
+  entries.push(value);
+  index.set(key, entries);
+}
+
+function buildExamCourseIndexes(courses: ExamCatalogCourse[]) {
+  const byCourseNumber = new Map<string, ExamCatalogCourse[]>();
+  const byTitle = new Map<string, ExamCatalogCourse[]>();
+
+  for (const course of courses) {
+    addToIndex(byCourseNumber, normalizeExamCourseNumber(course.courseNumber), course);
+    addToIndex(byTitle, normalizeCourseTitle(course.title), course);
+  }
+
+  return { byCourseNumber, byTitle };
+}
+
+function matchExamRowToCatalogCourses(
+  row: ExamPlanRowInput,
+  indexes: ReturnType<typeof buildExamCourseIndexes>
+): Array<{ catalogCourseId: string; matchReasons: string[] }> {
+  const matches = new Map<string, { catalogCourseId: string; matchReasons: Set<string> }>();
+
+  function add(course: ExamCatalogCourse, reason: string) {
+    const existing = matches.get(course.id);
+    if (existing) {
+      existing.matchReasons.add(reason);
+      return;
+    }
+
+    matches.set(course.id, { catalogCourseId: course.id, matchReasons: new Set([reason]) });
+  }
+
+  const bracketNumbers = row.extracted_course_numbers.map(normalizeExamCourseNumber).filter((entry): entry is string => Boolean(entry));
+  for (const courseNumber of bracketNumbers) {
+    for (const course of indexes.byCourseNumber.get(courseNumber) ?? []) {
+      add(course, "course-number-brackets");
+    }
+  }
+
+  const titleNumbers = extractCourseNumbers(row.course_name).map(normalizeExamCourseNumber).filter((entry): entry is string => Boolean(entry));
+  for (const courseNumber of titleNumbers) {
+    for (const course of indexes.byCourseNumber.get(courseNumber) ?? []) {
+      add(course, bracketNumbers.includes(courseNumber) ? "course-number-brackets" : "course-number-title");
+    }
+  }
+
+  const normalizedTitle = normalizeCourseTitle(row.course_name);
+  for (const course of indexes.byTitle.get(normalizedTitle) ?? []) {
+    add(course, "course-title-exact");
+  }
+
+  const normalizedTitleWithoutBrackets = normalizeCourseTitle(stripBracketContents(row.course_name));
+  if (normalizedTitleWithoutBrackets !== normalizedTitle) {
+    for (const course of indexes.byTitle.get(normalizedTitleWithoutBrackets) ?? []) {
+      add(course, "course-title-exact");
+    }
+  }
+
+  return [...matches.values()].map((entry) => ({
+    catalogCourseId: entry.catalogCourseId,
+    matchReasons: ["course-number-brackets", "course-number-title", "course-title-exact"].filter((reason) =>
+      entry.matchReasons.has(reason)
+    )
+  }));
+}
+
+function examRowHash(row: ExamPlanRowInput): string {
+  return sha256Text(
+    JSON.stringify({
+      row_number: row.row_number,
+      date: row.date,
+      time_from: row.time_from,
+      time_to: row.time_to,
+      course_name: row.course_name,
+      appointment_type: row.appointment_type ?? null,
+      lecturer: row.lecturer ?? null
+    })
+  );
+}
+
 export const catalogRouter = Router();
 
 catalogRouter.get("/health", async (_req, res) => {
@@ -221,6 +353,7 @@ catalogRouter.get("/programmes", async (_req, res) => {
       program_key: program.key,
       program_label: program.label,
       page_url: program.pageUrl,
+      curriculum_categories: requirementsForProgram(program.key).map(serializeRequirement),
       latest_document: program.documents[0]
         ? {
             po_label: program.documents[0].poLabel,
@@ -421,6 +554,153 @@ catalogRouter.post("/internal/module-handbooks", async (req, res) => {
     }
 
     return { programmes_seen: payload.programmes.length, documents_seen: documentsSeen, courses_replaced: coursesReplaced };
+  });
+
+  res.json(result);
+});
+
+catalogRouter.get("/internal/exam-plans/status", async (req, res) => {
+  requireScannerToken(req);
+  const semesterKey = typeof req.query.semester_key === "string" ? req.query.semester_key.trim() : "";
+  const fileUrl = typeof req.query.file_url === "string" ? req.query.file_url.trim() : "";
+
+  if (!semesterKey || !fileUrl) {
+    throw new HttpError(400, "semester_key und file_url sind erforderlich.");
+  }
+
+  const document = await prisma.catalogExamPlanDocument.findUnique({
+    where: {
+      semesterKey_fileUrl: {
+        semesterKey,
+        fileUrl
+      }
+    },
+    select: {
+      contentHash: true,
+      etag: true,
+      lastModified: true,
+      fetchStatus: true,
+      parseStatus: true
+    }
+  });
+
+  res.json(
+    document
+      ? {
+          content_hash: document.contentHash,
+          etag: document.etag,
+          last_modified: document.lastModified,
+          fetch_status: document.fetchStatus,
+          parse_status: document.parseStatus
+        }
+      : null
+  );
+});
+
+catalogRouter.post("/internal/exam-plans", async (req, res) => {
+  requireScannerToken(req);
+  const payload = examPlanIngestSchema.parse(req.body);
+  const validRows = payload.rows.filter(
+    (row) => !row.parse_error && row.date && row.time_from && row.time_to && row.course_name.trim().length > 0
+  );
+
+  const catalogCourses = await prisma.catalogCourse.findMany({
+    where: { semesterKey: payload.semester_key }
+  });
+  const indexes = buildExamCourseIndexes(catalogCourses);
+  const rowsWithMatches = validRows.map((row) => ({
+    row,
+    matches: matchExamRowToCatalogCourses(row, indexes)
+  }));
+  const matchedRows = rowsWithMatches.filter((entry) => entry.matches.length > 0);
+
+  const result = await prisma.$transaction(async (tx) => {
+    const parsedAtUpdate = payload.parse_status === "parsed" ? { parsedAt: new Date() } : {};
+    const document = await tx.catalogExamPlanDocument.upsert({
+      where: {
+        semesterKey_fileUrl: {
+          semesterKey: payload.semester_key,
+          fileUrl: payload.file_url
+        }
+      },
+      create: {
+        semesterKey: payload.semester_key,
+        semesterIndex: payload.semester_index,
+        fileUrl: payload.file_url,
+        fileLabel: payload.file_label,
+        contentHash: payload.content_hash.toLowerCase(),
+        etag: payload.etag ?? null,
+        lastModified: payload.last_modified ?? null,
+        fetchStatus: payload.fetch_status,
+        parseStatus: payload.parse_status,
+        errorText: payload.error_text ?? null,
+        rowCount: payload.rows.length,
+        validRowCount: validRows.length,
+        matchedRowCount: matchedRows.length,
+        unmatchedRowCount: validRows.length - matchedRows.length,
+        fetchedAt: new Date(),
+        parsedAt: payload.parse_status === "parsed" ? new Date() : null
+      },
+      update: {
+        semesterIndex: payload.semester_index,
+        fileLabel: payload.file_label,
+        contentHash: payload.content_hash.toLowerCase(),
+        etag: payload.etag ?? null,
+        lastModified: payload.last_modified ?? null,
+        fetchStatus: payload.fetch_status,
+        parseStatus: payload.parse_status,
+        errorText: payload.error_text ?? null,
+        rowCount: payload.rows.length,
+        validRowCount: validRows.length,
+        matchedRowCount: matchedRows.length,
+        unmatchedRowCount: validRows.length - matchedRows.length,
+        fetchedAt: new Date(),
+        ...parsedAtUpdate
+      },
+      select: { id: true }
+    });
+
+    if (payload.parse_status === "parsed") {
+      await tx.catalogExamCandidate.deleteMany({ where: { documentId: document.id } });
+      for (const entry of matchedRows) {
+        const row = entry.row;
+        await tx.catalogExamCandidate.create({
+          data: {
+            documentId: document.id,
+            rowNumber: row.row_number,
+            weekday: row.weekday ?? null,
+            date: dateFromYmd(row.date as string),
+            timeFrom: row.time_from as string,
+            timeTo: row.time_to as string,
+            appointmentType: row.appointment_type ?? null,
+            lecturer: row.lecturer ?? null,
+            courseName: row.course_name,
+            normalizedCourseTitle: normalizeCourseTitle(row.course_name),
+            extractedCourseNumbers: row.extracted_course_numbers.map((entry) => entry.trim()).filter(Boolean),
+            rowHash: examRowHash(row),
+            matches: {
+              createMany: {
+                data: entry.matches.map((match) => ({
+                  catalogCourseId: match.catalogCourseId,
+                  matchReasons: match.matchReasons
+                })),
+                skipDuplicates: true
+              }
+            }
+          }
+        });
+      }
+    }
+
+    return {
+      document_id: document.id,
+      rows_seen: payload.rows.length,
+      valid_rows: validRows.length,
+      matched_rows: matchedRows.length,
+      unmatched_rows: validRows.length - matchedRows.length,
+      candidates_replaced: matchedRows.length,
+      matches_created: matchedRows.reduce((sum, entry) => sum + entry.matches.length, 0)
+    };
   });
 
   res.json(result);

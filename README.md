@@ -7,6 +7,7 @@ Code-first semester planning with anonymous PostgreSQL-backed plans and a public
 - PostgreSQL stores anonymous plans, categories, planned courses, appointments, exams, public catalogue courses, catalogue appointments, and scanner runs.
 - The browser stores only `semester-planner:plan-id` plus local UI preferences such as dark mode and filters.
 - The scanner scrapes public anonymous TUCaN Vorlesungsverzeichnis pages and ingests normalized catalogue data through the backend.
+- The scanner also enriches the catalogue with module handbooks and central TU Prüfungsplan exam candidates.
 - Public sharing is intentionally not implemented in this version.
 - Inferno is not used.
 
@@ -88,6 +89,7 @@ npm run scan:once
 - `TUCAN_START_URL` default: current public FB20 catalogue entry URL
 - `TUCAN_RATE_LIMIT_MS` default: `750`
 - `SCAN_INTERVAL_HOURS` default: `24`
+- `EXAM_PLAN_OVERVIEW_URL` default: central TU Prüfungsplan page
 - `TUCAN_FACULTY_PREFIX` default: `FB20 - Informatik`
 
 ## API Overview

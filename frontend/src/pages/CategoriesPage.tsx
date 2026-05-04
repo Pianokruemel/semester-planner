@@ -1,6 +1,18 @@
 import { useState } from "react";
 import { CategoryInUseError, useCreateCategory, useDeleteCategory, useCategories, useUpdateCategory } from "../hooks/useCategories";
 
+function formatRequiredCp(min: number | null, max: number | null) {
+  if (min == null && max == null) {
+    return "kein Sollwert";
+  }
+
+  if (min != null && max != null && min !== max) {
+    return `${min}-${max} CP`;
+  }
+
+  return `${min ?? max} CP`;
+}
+
 export function CategoriesPage() {
   const { data: categories = [] } = useCategories();
   const createCategory = useCreateCategory();
@@ -70,7 +82,7 @@ export function CategoriesPage() {
   return (
     <section className="page-card">
       <h2>Kategorien verwalten</h2>
-      <p className="page-intro">Organisiere Kurse visuell mit eigenen Farben und klaren Kategorien.</p>
+      <p className="page-intro">Deine Kategorien kommen aus dem Modulhandbuch deines Studiengangs.</p>
 
       <div className="category-form">
         <input placeholder="Name" value={name} onChange={(event) => setName(event.target.value)} disabled={isBusy} />
@@ -101,16 +113,23 @@ export function CategoriesPage() {
           <li key={category.id}>
             <div className="category-title">
               <span className="color-dot" style={{ backgroundColor: category.color }} />
-              <strong>{category.name}</strong>
-              <small>({category._count?.courses ?? 0} Kurse)</small>
+              <div>
+                <strong>{category.name}</strong>
+                <small>
+                  {category.earned_cp ?? 0} / {formatRequiredCp(category.required_cp_min, category.required_cp_max)} ·{" "}
+                  {category._count?.courses ?? 0} Kurse
+                </small>
+              </div>
             </div>
             <div className="button-row">
               <button type="button" onClick={() => startEdit(category)} disabled={isBusy}>
-                Bearbeiten
+                {category.source === "curriculum" ? "Farbe ändern" : "Bearbeiten"}
               </button>
-              <button type="button" className="danger-btn" onClick={() => void onDelete(category.id)} disabled={isBusy}>
-                {isDeleting ? "Löschen..." : "Löschen"}
-              </button>
+              {category.source !== "curriculum" ? (
+                <button type="button" className="danger-btn" onClick={() => void onDelete(category.id)} disabled={isBusy}>
+                  {isDeleting ? "Löschen..." : "Löschen"}
+                </button>
+              ) : null}
             </div>
           </li>
         ))}

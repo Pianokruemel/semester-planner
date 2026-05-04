@@ -5,7 +5,7 @@ export type CoursePayload = {
   name: string;
   abbreviation: string;
   cp: number;
-  category_id: string | null;
+  category_id: string;
   course_number: string | null;
   appointments_raw: string;
 };

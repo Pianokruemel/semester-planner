@@ -15,6 +15,9 @@ export function useCategories() {
 
     return snapshot.categories.map((category) => ({
       ...category,
+      earned_cp: snapshot.courses
+        .filter((course) => course.category_id === category.id && course.is_active)
+        .reduce((sum, course) => sum + course.cp, 0),
       _count: {
         courses: snapshot.courses.filter((course) => course.category_id === category.id).length
       }

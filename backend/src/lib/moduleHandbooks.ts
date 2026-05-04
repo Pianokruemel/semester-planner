@@ -1,4 +1,5 @@
 import { ModuleHandbookCourse } from "@prisma/client";
+import { findRequirementForClassPath } from "./curriculum";
 import { prisma } from "./prisma";
 
 const COURSE_NUMBER_PATTERN = /\b\d{2}\s*-\s*\d{2}\s*-\s*\d{4}(?:\s*-\s*[A-Za-z]{1,8})?\b/;
@@ -10,6 +11,10 @@ export type CatalogProgrammeMatch = {
   po_label: string;
   cp: number | null;
   class_path: string[];
+  category_key: string | null;
+  category_name: string | null;
+  category_required_cp_min: number | null;
+  category_required_cp_max: number | null;
   module_number: string;
   module_title: string;
 };
@@ -41,12 +46,17 @@ export function normalizeBaseCourseNumber(value: string | null | undefined): str
 }
 
 export function serializeProgrammeMatch(entry: HandbookCourseWithProgram): CatalogProgrammeMatch {
+  const requirement = findRequirementForClassPath(entry.programKey, entry.classPath);
   return {
     program_key: entry.programKey,
     program_label: entry.program.label,
     po_label: entry.poLabel,
     cp: entry.cp,
     class_path: entry.classPath,
+    category_key: requirement?.key ?? null,
+    category_name: requirement?.name ?? null,
+    category_required_cp_min: requirement?.requiredCpMin ?? null,
+    category_required_cp_max: requirement?.requiredCpMax ?? null,
     module_number: entry.moduleNumber,
     module_title: entry.moduleTitle
   };
@@ -108,4 +118,3 @@ export async function findProgrammeMatchesForCourseNumbers(courseNumbers: Array<
 
   return grouped;
 }
-

@@ -4,6 +4,10 @@ export type SnapshotCategory = {
   id: string;
   name: string;
   color: string;
+  source: "manual" | "curriculum" | string;
+  curriculum_category_key: string | null;
+  required_cp_min: number | null;
+  required_cp_max: number | null;
 };
 
 export type SnapshotAppointment = {
@@ -105,6 +109,7 @@ export type PlannerCategory = SnapshotCategory & {
   _count?: {
     courses: number;
   };
+  earned_cp?: number;
 };
 
 export type UiPreferences = {
@@ -177,8 +182,21 @@ function normalizeCategory(input: unknown, index: number): SnapshotCategory {
   return {
     id: input.id,
     name: input.name.trim(),
-    color: input.color
+    color: input.color,
+    source: typeof input.source === "string" && input.source.trim() ? input.source : "manual",
+    curriculum_category_key: normalizeNullableText(input.curriculum_category_key),
+    required_cp_min: normalizeOptionalPositiveInt(input.required_cp_min),
+    required_cp_max: normalizeOptionalPositiveInt(input.required_cp_max)
   };
+}
+
+function normalizeOptionalPositiveInt(input: unknown): number | null {
+  if (input == null) {
+    return null;
+  }
+
+  const value = Number(input);
+  return Number.isInteger(value) && value >= 0 ? value : null;
 }
 
 function normalizeAppointment(input: unknown, index: number): SnapshotAppointment {

@@ -121,6 +121,10 @@ export function CourseFormPage({ mode }: Props) {
       setErrorText("Kurs nicht gefunden. Bitte zur Übersicht zurückkehren.");
       return;
     }
+    if (!categoryId) {
+      setErrorText("Bitte Kategorie auswählen.");
+      return;
+    }
 
     try {
       if (mode === "create") {
@@ -128,7 +132,7 @@ export function CourseFormPage({ mode }: Props) {
           name,
           abbreviation,
           cp,
-          category_id: categoryId || null,
+          category_id: categoryId,
           course_number: courseNumber.trim() || null,
           appointments_raw: appointmentsRaw
         });
@@ -141,7 +145,7 @@ export function CourseFormPage({ mode }: Props) {
           name,
           abbreviation,
           cp,
-          category_id: categoryId || null,
+          category_id: categoryId,
           course_number: courseNumber.trim() || null,
           appointments_raw: appointmentsRaw
         });
@@ -262,7 +266,7 @@ export function CourseFormPage({ mode }: Props) {
           CP
           <input
             type="number"
-            min={0}
+            min={1}
             value={cp}
             onChange={(event) => setCp(Number(event.target.value))}
             required
@@ -281,7 +285,7 @@ export function CourseFormPage({ mode }: Props) {
         <label>
           Kategorie
           <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} disabled={isBusy}>
-            <option value="">Ohne Kategorie</option>
+            <option value="">Bitte wählen</option>
             {categories.map((category) => (
               <option key={category.id} value={category.id}>
                 {category.name}

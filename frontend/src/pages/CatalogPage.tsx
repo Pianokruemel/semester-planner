@@ -10,6 +10,7 @@ import {
   fetchCatalogProgrammes,
   searchCatalogCourses
 } from "../api/catalog";
+import { useCategories } from "../hooks/useCategories";
 import { usePlannerStore } from "../planner/store";
 
 function formatDateRange(course: Pick<CatalogCourseCard, "first_date" | "last_date">) {
@@ -118,11 +119,11 @@ function appointmentTimePlaceKey(appointment: {
 
 export function CatalogPage() {
   const navigate = useNavigate();
-  const { importCatalogCourse, preferredStudyProgramKey, setPreferredStudyProgram } = usePlannerStore();
+  const { importCatalogCourse, preferredStudyProgramKey } = usePlannerStore();
+  const { data: categories = [] } = useCategories();
   const [query, setQuery] = useState("");
   const [courses, setCourses] = useState<CatalogCourseCard[]>([]);
   const [programmes, setProgrammes] = useState<CatalogStudyProgram[]>([]);
-  const [selectedProgramKey, setSelectedProgramKey] = useState(preferredStudyProgramKey ?? "");
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
   const [selectedCourse, setSelectedCourse] = useState<CatalogCourseDetail | null>(null);
   const [isSearching, setIsSearching] = useState(false);
@@ -131,12 +132,10 @@ export function CatalogPage() {
   const [isImporting, setIsImporting] = useState(false);
   const [errorText, setErrorText] = useState("");
   const [isCpPromptVisible, setIsCpPromptVisible] = useState(false);
+  const [isCategoryPromptVisible, setIsCategoryPromptVisible] = useState(false);
   const [cpOverride, setCpOverride] = useState("6");
+  const [categoryId, setCategoryId] = useState("");
   const [selectedSubgroupKey, setSelectedSubgroupKey] = useState<string | null>(null);
-
-  useEffect(() => {
-    setSelectedProgramKey(preferredStudyProgramKey ?? "");
-  }, [preferredStudyProgramKey]);
 
   useEffect(() => {
     void fetchCatalogProgrammes()
@@ -174,7 +173,9 @@ export function CatalogPage() {
     setSelectedCourseId(courseId);
     setErrorText("");
     setIsCpPromptVisible(false);
+    setIsCategoryPromptVisible(false);
     setCpOverride("6");
+    setCategoryId("");
     setIsDetailLoading(true);
     if (window.matchMedia?.("(max-width: 1000px)").matches) {
       setIsMobileDetailOpen(true);
@@ -184,7 +185,6 @@ export function CatalogPage() {
       const groups = smallGroupsFromCourse(course);
       setSelectedCourse(course);
       setSelectedSubgroupKey(groups[0]?.key ?? null);
-      setSelectedProgramKey(preferredStudyProgramKey ?? "");
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : "Katalogkurs konnte nicht geladen werden.");
     } finally {
@@ -197,20 +197,26 @@ export function CatalogPage() {
       return;
     }
 
-    const selectedProgramme = selectedProgramKey
-      ? selectedCourse.programmes.find((program) => program.program_key === selectedProgramKey) ?? null
+    const selectedProgramme = preferredStudyProgramKey
+      ? selectedCourse.programmes.find((program) => program.program_key === preferredStudyProgramKey) ?? null
       : null;
     const hasProgrammeCp = Boolean(selectedProgramme?.cp && selectedProgramme.cp > 0);
-    const hasTucanCp = Boolean(selectedCourse.cp && selectedCourse.cp > 0);
-    const needsCpOverride = !hasProgrammeCp && !hasTucanCp;
-    if (needsCpOverride && !isCpPromptVisible) {
-      setIsCpPromptVisible(true);
+    const hasProgrammeCategory = Boolean(selectedProgramme?.category_key);
+    const needsCpOverride = !hasProgrammeCp;
+    const needsCategoryOverride = !hasProgrammeCategory;
+    if ((needsCpOverride && !isCpPromptVisible) || (needsCategoryOverride && !isCategoryPromptVisible)) {
+      setIsCpPromptVisible(needsCpOverride);
+      setIsCategoryPromptVisible(needsCategoryOverride);
       return;
     }
 
     const parsedCpOverride = Number(cpOverride);
     if (needsCpOverride && (!Number.isInteger(parsedCpOverride) || parsedCpOverride <= 0)) {
       setErrorText("Bitte gültige CP größer als 0 eingeben.");
+      return;
+    }
+    if (needsCategoryOverride && !categoryId) {
+      setErrorText("Bitte Kategorie auswählen.");
       return;
     }
 
@@ -220,9 +226,9 @@ export function CatalogPage() {
     try {
       const result = await importCatalogCourse({
         catalog_course_id: selectedCourse.id,
-        program_key: selectedProgramKey || null,
         selected_subgroup_key: selectedSubgroupKey,
-        ...(needsCpOverride ? { cp_override: parsedCpOverride } : {})
+        ...(needsCpOverride ? { cp_override: parsedCpOverride } : {}),
+        ...(needsCategoryOverride ? { category_id: categoryId } : {})
       });
       navigate(`/courses/${result.courseId}/edit`);
     } catch (error) {
@@ -238,9 +244,11 @@ export function CatalogPage() {
     appointments: group.appointments.filter((appointment) => !baseAppointmentKeys.has(appointmentTimePlaceKey(appointment)))
   }));
   const selectedSubgroup = smallGroups.find((group) => group.key === selectedSubgroupKey) ?? null;
-  const selectedProgramme = selectedCourse && selectedProgramKey
-    ? selectedCourse.programmes.find((program) => program.program_key === selectedProgramKey) ?? null
+  const selectedProgramme = selectedCourse && preferredStudyProgramKey
+    ? selectedCourse.programmes.find((program) => program.program_key === preferredStudyProgramKey) ?? null
     : null;
+  const selectedProgramLabel =
+    programmes.find((program) => program.program_key === preferredStudyProgramKey)?.program_label ?? "Kein Studiengang";
 
   const detailContent = selectedCourse ? (
     <>
@@ -253,32 +261,17 @@ export function CatalogPage() {
           <p className="page-intro">{selectedCourse.path.join(" / ")}</p>
           <p className="page-intro">{selectedCourse.instructors.join(", ") || "Keine Lehrenden erfasst"}</p>
           <p className="page-intro">
-            CP: {selectedProgramme?.cp && selectedProgramme.cp > 0 ? selectedProgramme.cp : selectedCourse.cp && selectedCourse.cp > 0 ? selectedCourse.cp : "fehlt"}
+            CP: {selectedProgramme?.cp && selectedProgramme.cp > 0 ? selectedProgramme.cp : "fehlt"}
           </p>
           {selectedProgramme ? (
             <p className="page-intro">
               {selectedProgramme.program_label} · {selectedProgramme.class_path.join(" / ") || selectedProgramme.module_title}
+              {selectedProgramme.category_name ? ` · ${selectedProgramme.category_name}` : ""}
             </p>
           ) : null}
         </div>
         <div className="catalog-import-actions">
-          {programmes.length > 0 ? (
-            <label>
-              Studiengang
-              <select
-                value={selectedProgramKey}
-                onChange={(event) => setSelectedProgramKey(event.target.value)}
-                disabled={isImporting}
-              >
-                <option value="">Kein Studiengang</option>
-                {programmes.map((program) => (
-                  <option key={program.program_key} value={program.program_key}>
-                    {program.program_label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
+          <p className="page-intro">Studiengang: {selectedProgramLabel}</p>
           {isCpPromptVisible ? (
             <label>
               CP
@@ -291,8 +284,21 @@ export function CatalogPage() {
               />
             </label>
           ) : null}
+          {isCategoryPromptVisible ? (
+            <label>
+              Kategorie
+              <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} disabled={isImporting}>
+                <option value="">Bitte wählen</option>
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <button type="button" className="primary-btn" onClick={() => void importSelectedCourse()} disabled={isImporting}>
-            {isImporting ? "Importiere..." : isCpPromptVisible ? "CP bestätigen und hinzufügen" : "Zum Plan hinzufügen"}
+            {isImporting ? "Importiere..." : isCpPromptVisible || isCategoryPromptVisible ? "Angaben bestätigen und hinzufügen" : "Zum Plan hinzufügen"}
           </button>
         </div>
       </div>
@@ -439,26 +445,7 @@ export function CatalogPage() {
             placeholder="Titel, Kursnummer, Dozent, Fachbereich"
           />
         </label>
-        {programmes.length > 0 ? (
-          <label className="full-width">
-            Plan-Studiengang
-            <select
-              value={preferredStudyProgramKey ?? ""}
-              onChange={(event) => {
-                const nextKey = event.target.value || null;
-                setSelectedProgramKey(event.target.value);
-                void setPreferredStudyProgram(nextKey);
-              }}
-            >
-              <option value="">Kein Studiengang</option>
-              {programmes.map((program) => (
-                <option key={program.program_key} value={program.program_key}>
-                  {program.program_label}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
+        <p className="page-intro">Plan-Studiengang: {selectedProgramLabel}</p>
         {isSearching ? <p className="page-intro">Suche läuft...</p> : null}
         {errorText ? <p className="error-text">{errorText}</p> : null}
         <div className="catalog-result-list">

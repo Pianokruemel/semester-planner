@@ -44,11 +44,11 @@ type PlannerContextValue = {
   hasPersistedDraft: boolean;
   hasUnsavedChanges: boolean;
   isLoadingPlan: boolean;
-  startNewPlanner: () => Promise<void>;
+  startNewPlanner: (preferredStudyProgramKey: string) => Promise<void>;
   resumePersistedDraft: () => void;
   updateUiPreferences: (patch: UiPreferencesPatch) => void;
   renamePlan: (name: string) => Promise<void>;
-  setPreferredStudyProgram: (programKey: string | null) => Promise<void>;
+  setPreferredStudyProgram: (programKey: string) => Promise<void>;
   createCategory: (payload: { name: string; color: string }) => Promise<SnapshotCategory>;
   updateCategory: (payload: { id: string; name: string; color: string }) => Promise<SnapshotCategory>;
   deleteCategory: (payload: { id: string; confirm?: boolean }) => Promise<void>;
@@ -66,7 +66,6 @@ type PlannerContextValue = {
     category_id?: string | null;
     abbreviation?: string;
     cp_override?: number;
-    program_key?: string | null;
     selected_subgroup_key?: string | null;
   }) => Promise<{ courseId: string }>;
 };
@@ -179,8 +178,8 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
     applyPlanStorage(nextPlan);
   }
 
-  async function startNewPlanner() {
-    setLoadedPlan(await createPlanRequest());
+  async function startNewPlanner(preferredStudyProgramKey: string) {
+    setLoadedPlan(await createPlanRequest(preferredStudyProgramKey));
   }
 
   function resumePersistedDraft() {
@@ -198,7 +197,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
     setLoadedPlan(await updatePlanName(ensurePlanId(planId), name));
   }
 
-  async function setPreferredStudyProgram(programKey: string | null) {
+  async function setPreferredStudyProgram(programKey: string) {
     setLoadedPlan(await updatePlanPreferredStudyProgram(ensurePlanId(planId), programKey));
   }
 
@@ -301,7 +300,6 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
     category_id?: string | null;
     abbreviation?: string;
     cp_override?: number;
-    program_key?: string | null;
     selected_subgroup_key?: string | null;
   }) {
     const result = await importCatalogCourseRequest(ensurePlanId(planId), payload);

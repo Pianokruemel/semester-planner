@@ -46,6 +46,10 @@ const catalogCard: CatalogCourseCard = {
       po_label: "PO 2023",
       cp: 5,
       class_path: ["Pflichtbereich"],
+      category_key: "pflichtbereich",
+      category_name: "Pflichtbereich",
+      category_required_cp_min: 114,
+      category_required_cp_max: 114,
       module_number: "20-00-1234",
       module_title: "Mobile UI"
     }
@@ -110,6 +114,7 @@ describe("CatalogPage mobile detail sheet", () => {
         program_key: "bsc-informatik",
         program_label: "B. Sc. Informatik",
         page_url: "https://example.test/bsc",
+        curriculum_categories: [],
         latest_document: null
       }
     ]);
@@ -151,7 +156,7 @@ describe("CatalogPage mobile detail sheet", () => {
 
     expect(await screen.findByRole("heading", { name: catalogDetail.title })).toBeInTheDocument();
     expect(screen.getAllByText("Uebung 1").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("B. Sc. Informatik").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/B\. Sc\. Informatik/).length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: "Zurück" }));
 
@@ -169,14 +174,13 @@ describe("CatalogPage mobile detail sheet", () => {
     await waitFor(() =>
       expect(importCatalogCourse).toHaveBeenCalledWith({
         catalog_course_id: "catalog-1",
-        program_key: "bsc-informatik",
         selected_subgroup_key: "group-1"
       })
     );
   });
 
-  it("prompts for CP only when neither selected programme nor TUCaN provides CP", async () => {
-    mockedFetchCatalogCourse.mockResolvedValue({ ...catalogDetail, cp: null, programmes: [] });
+  it("prompts for CP and category when the selected programme has no handbook match", async () => {
+    mockedFetchCatalogCourse.mockResolvedValue({ ...catalogDetail, cp: 6, programmes: [] });
     importCatalogCourse.mockResolvedValue({ courseId: "planned-1" });
     renderCatalogPage();
 
@@ -185,6 +189,6 @@ describe("CatalogPage mobile detail sheet", () => {
     fireEvent.click(screen.getByRole("button", { name: "Zum Plan hinzufügen" }));
 
     expect(importCatalogCourse).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "CP bestätigen und hinzufügen" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Angaben bestätigen und hinzufügen" })).toBeInTheDocument();
   });
 });

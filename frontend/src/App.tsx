@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink, Route, Routes, useNavigate } from "react-router-dom";
+import { CatalogStudyProgram, fetchCatalogProgrammes } from "./api/catalog";
 import { defaultSettings, Settings } from "./api/types";
 import { useSettings, useUpdateSettings } from "./hooks/useSettings";
 import { CalendarPage } from "./pages/CalendarPage";
@@ -13,10 +14,21 @@ function App() {
   const navigate = useNavigate();
   const { data: settings } = useSettings();
   const updateSettings = useUpdateSettings();
-  const { hasCurrentPlanner, isLoadingPlan, startNewPlanner } = usePlannerStore();
+  const { hasCurrentPlanner, isLoadingPlan, preferredStudyProgramKey, startNewPlanner, setPreferredStudyProgram } = usePlannerStore();
   const mergedSettings = settings ?? defaultSettings;
   const [entryError, setEntryError] = useState("");
   const [isCreatingPlan, setIsCreatingPlan] = useState(false);
+  const [programmes, setProgrammes] = useState<CatalogStudyProgram[]>([]);
+  const [selectedProgramKey, setSelectedProgramKey] = useState("");
+
+  useEffect(() => {
+    void fetchCatalogProgrammes()
+      .then((items) => {
+        setProgrammes(items);
+        setSelectedProgramKey((current) => preferredStudyProgramKey || current || items[0]?.program_key || "");
+      })
+      .catch(() => setProgrammes([]));
+  }, [preferredStudyProgramKey]);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", mergedSettings.dark_mode);
@@ -32,15 +44,33 @@ function App() {
 
   async function handleNewPlanner() {
     setEntryError("");
+    if (!selectedProgramKey) {
+      setEntryError("Bitte zuerst einen Studiengang auswählen.");
+      return;
+    }
     setIsCreatingPlan(true);
 
     try {
-      await startNewPlanner();
+      await startNewPlanner(selectedProgramKey);
       navigate("/");
     } catch (error) {
       setEntryError(error instanceof Error ? error.message : "Plan konnte nicht erstellt werden.");
     } finally {
       setIsCreatingPlan(false);
+    }
+  }
+
+  async function handleSelectStudyProgram() {
+    setEntryError("");
+    if (!selectedProgramKey) {
+      setEntryError("Bitte zuerst einen Studiengang auswählen.");
+      return;
+    }
+
+    try {
+      await setPreferredStudyProgram(selectedProgramKey);
+    } catch (error) {
+      setEntryError(error instanceof Error ? error.message : "Studiengang konnte nicht gespeichert werden.");
     }
   }
 
@@ -55,20 +85,37 @@ function App() {
     );
   }
 
-  if (!hasCurrentPlanner) {
+  if (!hasCurrentPlanner || !preferredStudyProgramKey) {
     return (
       <div className="app-shell">
         <section className="page-card entry-hero">
           <span className="entry-kicker">Anonym planen</span>
-          <h1>Plane dein Semester mit öffentlichem TUCaN-Katalog</h1>
+          <h1>Wähle deinen Studiengang</h1>
           <p className="page-intro">
-            Erstelle eine neue Planung. Der Browser speichert nur die Plan-ID; Kurse, Kategorien, Termine und Prüfungen
-            werden in PostgreSQL gespeichert.
+            CP und Kategorien werden aus dem Modulhandbuch deines Studiengangs übernommen. Fehlende Angaben fragst du
+            beim Hinzufügen eines Kurses nach.
           </p>
+          <label className="full-width">
+            Studiengang
+            <select value={selectedProgramKey} onChange={(event) => setSelectedProgramKey(event.target.value)}>
+              <option value="">Bitte wählen</option>
+              {programmes.map((program) => (
+                <option key={program.program_key} value={program.program_key}>
+                  {program.program_label}
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="entry-actions">
-            <button type="button" className="primary-btn" onClick={() => void handleNewPlanner()} disabled={isCreatingPlan}>
-              {isCreatingPlan ? "Erstelle..." : "Neue Planung"}
-            </button>
+            {hasCurrentPlanner ? (
+              <button type="button" className="primary-btn" onClick={() => void handleSelectStudyProgram()}>
+                Studiengang speichern
+              </button>
+            ) : (
+              <button type="button" className="primary-btn" onClick={() => void handleNewPlanner()} disabled={isCreatingPlan}>
+                {isCreatingPlan ? "Erstelle..." : "Neue Planung"}
+              </button>
+            )}
           </div>
           {entryError ? <p className="error-text">{entryError}</p> : null}
 

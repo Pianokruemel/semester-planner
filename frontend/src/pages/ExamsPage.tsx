@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { fetchExamCandidates, type PlanExamCandidateGroup } from "../api/plans";
 import { SnapshotExam } from "../api/types";
 import { useCourses } from "../hooks/useCourses";
 import { useLocalMutation } from "../hooks/useLocalMutation";
@@ -62,9 +63,17 @@ function getImportMatchReasonText(row: ExamImportPreviewRow): string | null {
   return row.matchReasons.map((reason) => formatExamImportMatchReason(reason)).join(", ");
 }
 
+function formatCandidateMatchReason(reason: string): string {
+  if (reason === "course-number-brackets" || reason === "course-number-title" || reason === "course-title-exact") {
+    return formatExamImportMatchReason(reason);
+  }
+
+  return reason;
+}
+
 export function ExamsPage() {
   const { data: courses = [] } = useCourses();
-  const { setCourseExam, clearCourseExam, applyImportedExams } = usePlannerStore();
+  const { planId, setCourseExam, clearCourseExam, applyImportedExams } = usePlannerStore();
   const manualSectionRef = useRef<HTMLElement | null>(null);
   const manualCourseSelectRef = useRef<HTMLSelectElement | null>(null);
   const [selectedCourseId, setSelectedCourseId] = useState("");
@@ -77,6 +86,10 @@ export function ExamsPage() {
   const [importNotice, setImportNotice] = useState("");
   const [importFileName, setImportFileName] = useState("");
   const [parsedImportRows, setParsedImportRows] = useState<ParsedExamImportRow[]>([]);
+  const [candidateSourceLabel, setCandidateSourceLabel] = useState<string | null>(null);
+  const [candidateGroups, setCandidateGroups] = useState<PlanExamCandidateGroup[]>([]);
+  const [candidateError, setCandidateError] = useState("");
+  const [candidatesLoading, setCandidatesLoading] = useState(false);
   const saveExamMutation = useLocalMutation(async (payload: { courseId: string; exam: SnapshotExam }) =>
     setCourseExam(payload.courseId, payload.exam)
   );
@@ -129,6 +142,32 @@ export function ExamsPage() {
     () => previewRows.filter((row) => row.status === "matched" && row.matchedCourseId && row.candidateExam),
     [previewRows]
   );
+  const candidateCount = useMemo(
+    () => candidateGroups.reduce((sum, group) => sum + group.candidates.length, 0),
+    [candidateGroups]
+  );
+
+  async function loadExamCandidates() {
+    if (!planId) {
+      setCandidateGroups([]);
+      setCandidateSourceLabel(null);
+      return;
+    }
+
+    setCandidatesLoading(true);
+    setCandidateError("");
+    try {
+      const result = await fetchExamCandidates(planId);
+      setCandidateSourceLabel(result.source?.file_label ?? null);
+      setCandidateGroups(result.items);
+    } catch (error) {
+      setCandidateGroups([]);
+      setCandidateSourceLabel(null);
+      setCandidateError(error instanceof Error ? error.message : "Prüfungsvorschläge konnten nicht geladen werden.");
+    } finally {
+      setCandidatesLoading(false);
+    }
+  }
 
   useEffect(() => {
     if (sortedCourses.length === 0) {
@@ -153,6 +192,10 @@ export function ExamsPage() {
     setManualTimeFrom(selectedCourse.exam?.timeFrom ?? "");
     setManualTimeTo(selectedCourse.exam?.timeTo ?? "");
   }, [selectedCourse]);
+
+  useEffect(() => {
+    void loadExamCandidates();
+  }, [planId, courses]);
 
   function jumpToManualEditor(courseId: string) {
     setSelectedCourseId(courseId);
@@ -239,6 +282,29 @@ export function ExamsPage() {
       }
     ]);
     setImportNotice(`Prüfung für ${row.matchedCourses[0]?.name ?? "den Kurs"} gespeichert.`);
+  }
+
+  async function handleApplyCandidate(group: PlanExamCandidateGroup, candidate: PlanExamCandidateGroup["candidates"][number]) {
+    if (
+      group.has_existing_exam &&
+      !window.confirm("Für diesen Kurs ist bereits eine Prüfung gespeichert. Vorschlag übernehmen und vorhandene Werte ersetzen?")
+    ) {
+      return;
+    }
+
+    setCandidateError("");
+    await importExamMutation.mutateAsync([
+      {
+        courseId: group.course_id,
+        exam: {
+          date: candidate.date,
+          time_from: candidate.time_from,
+          time_to: candidate.time_to
+        }
+      }
+    ]);
+    setImportNotice(`Prüfungsvorschlag für ${group.course_name} gespeichert.`);
+    await loadExamCandidates();
   }
 
   async function handleManualSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -395,6 +461,74 @@ export function ExamsPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="page-card page-section">
+        <div>
+          <h2>Vorschläge aus dem Prüfungsplan</h2>
+          <p className="page-intro">
+            {candidateSourceLabel
+              ? `Quelle: ${candidateSourceLabel}. Vorschläge werden erst übernommen, wenn du sie speicherst.`
+              : "Noch keine passenden Prüfungsvorschläge aus dem zentralen Prüfungsplan gefunden."}
+          </p>
+        </div>
+        {candidatesLoading ? <p className="page-intro">Lade Prüfungsvorschläge...</p> : null}
+        {candidateError ? <p className="error-text">{candidateError}</p> : null}
+        {!candidatesLoading && candidateCount === 0 ? (
+          <p className="page-intro">Für deine katalogbasierten Kurse gibt es aktuell keine eindeutigen Vorschläge.</p>
+        ) : null}
+        {candidateGroups.length > 0 ? (
+          <div className="exam-list">
+            {candidateGroups.map((group) => (
+              <article key={group.course_id} className="exam-card">
+                <div className="exam-card-head">
+                  <div>
+                    <h3>{group.course_name}</h3>
+                    <p className="page-intro">{group.course_number ? `Kursnummer: ${group.course_number}` : "Katalogtreffer"}</p>
+                  </div>
+                  {group.has_existing_exam ? (
+                    <span className="exam-status-pill exam-status-pill-muted">Hat Prüfung</span>
+                  ) : (
+                    <span className="exam-status-pill">Neu</span>
+                  )}
+                </div>
+                <div className="table-scroll">
+                  <table className="exam-preview-table">
+                    <thead>
+                      <tr>
+                        <th>Prüfung</th>
+                        <th>Termin</th>
+                        <th>Treffer</th>
+                        <th>Aktion</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {group.candidates.map((candidate) => (
+                        <tr key={candidate.candidate_id}>
+                          <td>
+                            <strong>{candidate.exam_title}</strong>
+                            <span className="muted-text">{candidate.lecturer ?? candidate.appointment_type ?? "Zentraler Prüfungsplan"}</span>
+                          </td>
+                          <td>{formatExamDate(candidate.date, candidate.time_from, candidate.time_to)}</td>
+                          <td>{candidate.match_reasons.map(formatCandidateMatchReason).join(", ")}</td>
+                          <td>
+                            <button
+                              type="button"
+                              onClick={() => void handleApplyCandidate(group, candidate)}
+                              disabled={importExamMutation.isPending}
+                            >
+                              Übernehmen
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </article>
+            ))}
           </div>
         ) : null}
       </section>

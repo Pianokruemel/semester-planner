@@ -34,6 +34,7 @@ services:
       TUCAN_RATE_LIMIT_MS: ${TUCAN_RATE_LIMIT_MS:-750}
       TUCAN_FACULTY_PREFIX: ${TUCAN_FACULTY_PREFIX:-FB20 - Informatik}
       SCAN_BATCH_SIZE: ${SCAN_BATCH_SIZE:-10}
+      EXAM_PLAN_OVERVIEW_URL: ${EXAM_PLAN_OVERVIEW_URL:-https://www.intern.tu-darmstadt.de/verwaltung/dez_ii/campusmanagement/cm_lvm/pruefungstermine_zentral/index.de.jsp}
       PORT: 4000
     expose:
       - "4000"
@@ -71,6 +72,7 @@ services:
       SCAN_INTERVAL_HOURS: ${SCAN_INTERVAL_HOURS:-24}
       TUCAN_FACULTY_PREFIX: ${TUCAN_FACULTY_PREFIX:-FB20 - Informatik}
       SCAN_BATCH_SIZE: ${SCAN_BATCH_SIZE:-10}
+      EXAM_PLAN_OVERVIEW_URL: ${EXAM_PLAN_OVERVIEW_URL:-https://www.intern.tu-darmstadt.de/verwaltung/dez_ii/campusmanagement/cm_lvm/pruefungstermine_zentral/index.de.jsp}
     depends_on:
       - backend
     networks:
