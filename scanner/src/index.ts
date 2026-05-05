@@ -1,7 +1,10 @@
 import { setTimeout as sleep } from "node:timers/promises";
+import { setDefaultResultOrder } from "node:dns";
 import { parseExamWorkbookBuffer } from "@semester-planner/shared/examWorkbook";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+setDefaultResultOrder("ipv4first");
 import { readConfig, ScannerConfig } from "./config.js";
 import { discoverExamPlanLinks, ExamPlanLink, selectNewestExamPlanLink } from "./examPlans.js";
 import {
@@ -32,45 +35,92 @@ type QueueItem = {
   path: string[];
 };
 
+const FETCH_TIMEOUT_MS = 30_000;
+const FETCH_RETRY_ATTEMPTS = 3;
+const FETCH_RETRY_DELAY_MS = 5_000;
+
+function isTransientFetchError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if (error.name === "AbortError") return true;
+  return error.message.includes("fetch failed");
+}
+
 async function fetchText(url: string): Promise<string> {
-  const response = await fetch(url, {
-    headers: {
-      "user-agent": "semester-planner-public-catalog-scanner/0.1"
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      headers: {
+        "user-agent": "semester-planner-public-catalog-scanner/0.1"
+      },
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      throw new Error(`TUCaN request failed ${response.status}: ${url}`);
     }
-  });
 
-  if (!response.ok) {
-    throw new Error(`TUCaN request failed ${response.status}: ${url}`);
+    return await response.text();
+  } finally {
+    clearTimeout(timer);
   }
-
-  return response.text();
 }
 
 async function fetchBytes(
   url: string,
   headers: Record<string, string> = {}
 ): Promise<{ status: number; bytes: Uint8Array; etag: string | null; lastModified: string | null }> {
-  const response = await fetch(url, {
-    headers: {
-      "user-agent": "semester-planner-public-catalog-scanner/0.1",
-      ...headers
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      headers: {
+        "user-agent": "semester-planner-public-catalog-scanner/0.1",
+        ...headers
+      },
+      signal: controller.signal
+    });
+
+    if (response.status === 304) {
+      return { status: 304, bytes: new Uint8Array(), etag: response.headers.get("etag"), lastModified: response.headers.get("last-modified") };
     }
-  });
 
-  if (response.status === 304) {
-    return { status: 304, bytes: new Uint8Array(), etag: response.headers.get("etag"), lastModified: response.headers.get("last-modified") };
+    if (!response.ok) {
+      throw new Error(`Binary request failed ${response.status}: ${url}`);
+    }
+
+    return {
+      status: response.status,
+      bytes: new Uint8Array(await response.arrayBuffer()),
+      etag: response.headers.get("etag"),
+      lastModified: response.headers.get("last-modified")
+    };
+  } finally {
+    clearTimeout(timer);
   }
+}
 
-  if (!response.ok) {
-    throw new Error(`Binary request failed ${response.status}: ${url}`);
+async function withTransientRetry<T>(
+  context: string,
+  task: () => Promise<T>,
+  attempts = FETCH_RETRY_ATTEMPTS,
+  retryDelayMs = FETCH_RETRY_DELAY_MS
+): Promise<T> {
+  let lastError: unknown = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await task();
+    } catch (error) {
+      lastError = error;
+      if (attempt >= attempts || !isTransientFetchError(error)) {
+        throw error;
+      }
+      const reason = error instanceof Error ? error.message : String(error);
+      console.warn(`fetch_retry context=${context} attempt=${attempt}/${attempts} reason="${reason}"`);
+      await sleep(retryDelayMs);
+    }
   }
-
-  return {
-    status: response.status,
-    bytes: new Uint8Array(await response.arrayBuffer()),
-    etag: response.headers.get("etag"),
-    lastModified: response.headers.get("last-modified")
-  };
+  throw lastError instanceof Error ? lastError : new Error(`Fetch failed: ${context}`);
 }
 
 function isWithinFaculty(path: string[], link: TucanLink, facultyPrefix: string): boolean {
@@ -313,7 +363,10 @@ async function ingestModuleHandbooks(
 
 export async function enrichModuleHandbooks(config: ScannerConfig) {
   console.log(`module_handbooks_overview url=${config.moduleHandbookOverviewUrl}`);
-  const overviewHtml = await fetchText(config.moduleHandbookOverviewUrl);
+  const overviewHtml = await withTransientRetry(
+    `module_handbooks_overview ${config.moduleHandbookOverviewUrl}`,
+    () => fetchText(config.moduleHandbookOverviewUrl)
+  );
   const programmePages = discoverStudyProgramPages(overviewHtml, config.moduleHandbookOverviewUrl);
   const links: ModuleHandbookLink[] = [];
 
@@ -321,13 +374,20 @@ export async function enrichModuleHandbooks(config: ScannerConfig) {
 
   for (const page of programmePages) {
     await sleep(config.rateLimitMs);
-    const programHtml = await fetchText(page.page_url);
-    const link = findCurrentModuleHandbookLink(programHtml, page);
-    if (link) {
-      links.push(link);
-      console.log(`module_handbook_found program="${link.program_label}" po="${link.po_label}" pdf=${link.pdf_url}`);
-    } else {
-      console.warn(`module_handbook_missing program="${page.program_label}" page=${page.page_url}`);
+    try {
+      const programHtml = await withTransientRetry(
+        `module_handbook_program ${page.page_url}`,
+        () => fetchText(page.page_url)
+      );
+      const link = findCurrentModuleHandbookLink(programHtml, page);
+      if (link) {
+        links.push(link);
+        console.log(`module_handbook_found program="${link.program_label}" po="${link.po_label}" pdf=${link.pdf_url}`);
+      } else {
+        console.warn(`module_handbook_missing program="${page.program_label}" page=${page.page_url}`);
+      }
+    } catch (error) {
+      console.error(`module_handbook_program_failed program="${page.program_label}" page=${page.page_url}`, error);
     }
   }
 
@@ -344,7 +404,10 @@ export async function enrichModuleHandbooks(config: ScannerConfig) {
       }
 
       await sleep(config.rateLimitMs);
-      const fetched = await fetchBytes(link.pdf_url, headers);
+      const fetched = await withTransientRetry(
+        `module_handbook_pdf ${link.pdf_url}`,
+        () => fetchBytes(link.pdf_url, headers)
+      );
       if (fetched.status === 304) {
         console.log(`module_handbook_unchanged program="${link.program_label}" reason=not_modified`);
         continue;
