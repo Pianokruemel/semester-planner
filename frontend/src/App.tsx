@@ -95,7 +95,7 @@ function App() {
             CP und Kategorien werden aus dem Modulhandbuch deines Studiengangs übernommen. Fehlende Angaben fragst du
             beim Hinzufügen eines Kurses nach.
           </p>
-          <label className="full-width">
+          <label className="entry-field full-width">
             Studiengang
             <select value={selectedProgramKey} onChange={(event) => setSelectedProgramKey(event.target.value)}>
               <option value="">Bitte wählen</option>

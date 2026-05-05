@@ -797,6 +797,41 @@ textarea:disabled {
   text-transform: uppercase;
 }
 
+.entry-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.38rem;
+  width: min(100%, 28rem);
+  color: var(--text-subtle);
+  font-size: 0.93rem;
+  font-weight: 700;
+}
+
+.entry-field select {
+  width: 100%;
+  min-height: 2.9rem;
+  appearance: none;
+  border: var(--border-soft);
+  border-radius: var(--radius-sm);
+  background:
+    linear-gradient(45deg, transparent 50%, var(--text-subtle) 50%) calc(100% - 1.15rem) 50% / 0.42rem 0.42rem no-repeat,
+    linear-gradient(135deg, var(--text-subtle) 50%, transparent 50%) calc(100% - 0.88rem) 50% / 0.42rem 0.42rem no-repeat,
+    var(--control-bg);
+  color: var(--text-main);
+  font: inherit;
+  font-weight: 600;
+  padding: 0.66rem 2.25rem 0.66rem 0.78rem;
+}
+
+.entry-field option {
+  color: var(--text-main);
+  background: #ffffff;
+}
+
+.dark .entry-field option {
+  background: #0f172a;
+}
+
 .entry-actions {
   display: flex;
   flex-wrap: wrap;
