@@ -73,6 +73,7 @@ Scanner:
 ```bash
 cd scanner
 npm run scan:once
+npm run module-handbooks:once
 ```
 
 ## Environment Variables
@@ -89,6 +90,7 @@ npm run scan:once
 - `TUCAN_START_URL` default: current public FB20 catalogue entry URL
 - `TUCAN_RATE_LIMIT_MS` default: `750`
 - `SCAN_INTERVAL_HOURS` default: `24`
+- `MODULE_HANDBOOK_OVERVIEW_URL` default: FB20 study regulations and module handbook overview
 - `EXAM_PLAN_OVERVIEW_URL` default: central TU Prüfungsplan page
 - `TUCAN_FACULTY_PREFIX` default: `FB20 - Informatik`
 

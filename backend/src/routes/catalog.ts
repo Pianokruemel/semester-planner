@@ -300,17 +300,45 @@ catalogRouter.get("/health", async (_req, res) => {
   const latestScan = await prisma.catalogScanRun.findFirst({ orderBy: { startedAt: "desc" } });
   const courseWhere: Prisma.CatalogCourseWhereInput = latestScan ? { semesterKey: latestScan.semesterKey } : {};
   const appointmentWhere: Prisma.CatalogAppointmentWhereInput = latestScan ? { course: { semesterKey: latestScan.semesterKey } } : {};
-  const [courseCount, appointmentCount] = await Promise.all([
-    prisma.catalogCourse.count({ where: courseWhere }),
-    prisma.catalogAppointment.count({ where: appointmentWhere })
-  ]);
+  const [courseCount, appointmentCount, programCount, moduleHandbookDocumentCount, moduleHandbookCourseCount, latestModuleHandbookDocument] =
+    await Promise.all([
+      prisma.catalogCourse.count({ where: courseWhere }),
+      prisma.catalogAppointment.count({ where: appointmentWhere }),
+      prisma.catalogStudyProgram.count(),
+      prisma.moduleHandbookDocument.count(),
+      prisma.moduleHandbookCourse.count(),
+      prisma.moduleHandbookDocument.findFirst({
+        orderBy: [{ fetchedAt: "desc" }],
+        select: {
+          programKey: true,
+          poLabel: true,
+          fetchStatus: true,
+          parseStatus: true,
+          fetchedAt: true,
+          parsedAt: true
+        }
+      })
+    ]);
 
   res.json({
     latest_scan_status: latestScan?.status ?? null,
     latest_scan_time: latestScan?.finishedAt?.toISOString() ?? latestScan?.startedAt.toISOString() ?? null,
     latest_semester_key: latestScan?.semesterKey ?? null,
     course_count: courseCount,
-    appointment_count: appointmentCount
+    appointment_count: appointmentCount,
+    program_count: programCount,
+    module_handbook_document_count: moduleHandbookDocumentCount,
+    module_handbook_course_count: moduleHandbookCourseCount,
+    latest_module_handbook_document: latestModuleHandbookDocument
+      ? {
+          program_key: latestModuleHandbookDocument.programKey,
+          po_label: latestModuleHandbookDocument.poLabel,
+          fetch_status: latestModuleHandbookDocument.fetchStatus,
+          parse_status: latestModuleHandbookDocument.parseStatus,
+          fetched_at: latestModuleHandbookDocument.fetchedAt.toISOString(),
+          parsed_at: latestModuleHandbookDocument.parsedAt?.toISOString() ?? null
+        }
+      : null
   });
 });
 

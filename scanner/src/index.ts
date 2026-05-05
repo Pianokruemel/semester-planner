@@ -1,5 +1,7 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { parseExamWorkbookBuffer } from "@semester-planner/shared/examWorkbook";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { readConfig, ScannerConfig } from "./config.js";
 import { discoverExamPlanLinks, ExamPlanLink, selectNewestExamPlanLink } from "./examPlans.js";
 import {
@@ -309,11 +311,13 @@ async function ingestModuleHandbooks(
   console.log(`module_handbooks_ingested ${JSON.stringify(result)}`);
 }
 
-async function enrichModuleHandbooks(config: ScannerConfig) {
+export async function enrichModuleHandbooks(config: ScannerConfig) {
   console.log(`module_handbooks_overview url=${config.moduleHandbookOverviewUrl}`);
   const overviewHtml = await fetchText(config.moduleHandbookOverviewUrl);
   const programmePages = discoverStudyProgramPages(overviewHtml, config.moduleHandbookOverviewUrl);
   const links: ModuleHandbookLink[] = [];
+
+  await ingestModuleHandbooks(config, programmePages, []);
 
   for (const page of programmePages) {
     await sleep(config.rateLimitMs);
@@ -372,10 +376,10 @@ async function enrichModuleHandbooks(config: ScannerConfig) {
     }
   }
 
-  await ingestModuleHandbooks(config, programmePages, documents);
+  await ingestModuleHandbooks(config, [], documents);
 }
 
-async function enrichExamPlans(config: ScannerConfig) {
+export async function enrichExamPlans(config: ScannerConfig) {
   console.log(`exam_plan_overview url=${config.examPlanOverviewUrl}`);
   const overviewHtml = await fetchText(config.examPlanOverviewUrl);
   const links = discoverExamPlanLinks(overviewHtml, config.examPlanOverviewUrl);
@@ -424,12 +428,28 @@ async function enrichExamPlans(config: ScannerConfig) {
   }
 }
 
-async function scanOnce(config: ScannerConfig) {
+type ScanOnceDeps = {
+  enrichModuleHandbooks?: typeof enrichModuleHandbooks;
+  enrichExamPlans?: typeof enrichExamPlans;
+  resolveScanStart?: typeof resolveScanStart;
+};
+
+export async function scanOnce(config: ScannerConfig, deps: ScanOnceDeps = {}) {
   if (!config.scannerToken) {
     throw new Error("SCANNER_TOKEN is required.");
   }
 
-  const resolvedStart = await resolveScanStart(config);
+  const runModuleHandbooks = deps.enrichModuleHandbooks ?? enrichModuleHandbooks;
+  const runExamPlans = deps.enrichExamPlans ?? enrichExamPlans;
+  const resolveStart = deps.resolveScanStart ?? resolveScanStart;
+
+  try {
+    await runModuleHandbooks(config);
+  } catch (error) {
+    console.error("module_handbooks_failed", error);
+  }
+
+  const resolvedStart = await resolveStart(config);
   const startUrl = resolvedStart.url;
   const startHtml = resolvedStart.html;
   const semesterKey = resolvedStart.semesterKey;
@@ -450,96 +470,106 @@ async function scanOnce(config: ScannerConfig) {
   const batch: ScrapedCatalogCourse[] = [];
   let coursesFailed = 0;
 
-  while (queue.length > 0) {
-    const item = queue.shift() as QueueItem;
-    if (visited.has(item.url)) {
-      continue;
-    }
-
-    visited.add(item.url);
-    await sleep(config.rateLimitMs);
-    const html = item.url === startUrl ? startHtml : await fetchText(item.url);
-    const links = extractLinks(html, item.url);
-    console.log(`navigation url=${item.url} links=${links.length}`);
-
-    for (const link of links) {
-      if (link.kind === "course" && isWithinFaculty(item.path, link, config.facultyPrefix)) {
-        if (processedCourseUrls.has(link.href)) {
-          continue;
-        }
-
-        processedCourseUrls.add(link.href);
-
-        try {
-          await sleep(config.rateLimitMs);
-          const courseHtml = await fetchText(link.href);
-          let course = parseCourseDetail(courseHtml, link.href, { semesterKey, path: item.path });
-          for (const group of smallGroupsFromCourse(course)) {
-            if (!group.url || processedCourseUrls.has(group.url)) {
-              continue;
-            }
-
-            processedCourseUrls.add(group.url);
-            try {
-              await sleep(config.rateLimitMs);
-              const groupHtml = await fetchText(group.url);
-              const groupDetail = parseSmallGroupDetail(groupHtml);
-              course = attachSmallGroupDetail(course, group.key, groupDetail);
-              console.log(`small_group title="${group.title}" appointments=${groupDetail.appointments?.length ?? 0}`);
-            } catch (error) {
-              console.error(`small_group_failed url=${group.url}`, error);
-            }
-          }
-          batch.push(course);
-          console.log(`course title="${course.title}" appointments=${course.appointments.length} cp=${course.cp}`);
-
-          if (batch.length >= config.batchSize) {
-            await ingestBatch(config, {
-              scan_run_id: scanRunId,
-              semester_key: semesterKey,
-              status: "running",
-              courses: batch.splice(0)
-            });
-          }
-        } catch (error) {
-          coursesFailed += 1;
-          console.error(`course_failed url=${link.href}`, error);
-        }
-
+  try {
+    while (queue.length > 0) {
+      const item = queue.shift() as QueueItem;
+      if (visited.has(item.url)) {
         continue;
       }
 
-      if (link.kind === "navigation") {
-        if (!navigationTextIsUseful(link.text, config.facultyPrefix)) {
+      visited.add(item.url);
+      await sleep(config.rateLimitMs);
+      const html = item.url === startUrl ? startHtml : await fetchText(item.url);
+      const links = extractLinks(html, item.url);
+      console.log(`navigation url=${item.url} links=${links.length}`);
+
+      for (const link of links) {
+        if (link.kind === "course" && isWithinFaculty(item.path, link, config.facultyPrefix)) {
+          if (processedCourseUrls.has(link.href)) {
+            continue;
+          }
+
+          processedCourseUrls.add(link.href);
+
+          try {
+            await sleep(config.rateLimitMs);
+            const courseHtml = await fetchText(link.href);
+            let course = parseCourseDetail(courseHtml, link.href, { semesterKey, path: item.path });
+            for (const group of smallGroupsFromCourse(course)) {
+              if (!group.url || processedCourseUrls.has(group.url)) {
+                continue;
+              }
+
+              processedCourseUrls.add(group.url);
+              try {
+                await sleep(config.rateLimitMs);
+                const groupHtml = await fetchText(group.url);
+                const groupDetail = parseSmallGroupDetail(groupHtml);
+                course = attachSmallGroupDetail(course, group.key, groupDetail);
+                console.log(`small_group title="${group.title}" appointments=${groupDetail.appointments?.length ?? 0}`);
+              } catch (error) {
+                console.error(`small_group_failed url=${group.url}`, error);
+              }
+            }
+            batch.push(course);
+            console.log(`course title="${course.title}" appointments=${course.appointments.length} cp=${course.cp}`);
+
+            if (batch.length >= config.batchSize) {
+              await ingestBatch(config, {
+                scan_run_id: scanRunId,
+                semester_key: semesterKey,
+                status: "running",
+                courses: batch.splice(0)
+              });
+            }
+          } catch (error) {
+            coursesFailed += 1;
+            console.error(`course_failed url=${link.href}`, error);
+          }
+
           continue;
         }
 
-        const nextPath = link.text ? [...item.path, link.text] : item.path;
-        if (isWithinFaculty(nextPath, link, config.facultyPrefix) && nextPath.length <= 8 && !visited.has(link.href)) {
-          queue.push({ url: link.href, path: nextPath });
+        if (link.kind === "navigation") {
+          if (!navigationTextIsUseful(link.text, config.facultyPrefix)) {
+            continue;
+          }
+
+          const nextPath = link.text ? [...item.path, link.text] : item.path;
+          if (isWithinFaculty(nextPath, link, config.facultyPrefix) && nextPath.length <= 8 && !visited.has(link.href)) {
+            queue.push({ url: link.href, path: nextPath });
+          }
         }
       }
     }
-  }
 
-  console.log(`course_pages=${processedCourseUrls.size}`);
+    console.log(`course_pages=${processedCourseUrls.size}`);
 
-  await ingestBatch(config, {
-    scan_run_id: scanRunId,
-    semester_key: semesterKey,
-    status: "completed",
-    courses_failed: coursesFailed,
-    courses: batch
-  });
-
-  try {
-    await enrichModuleHandbooks(config);
+    await ingestBatch(config, {
+      scan_run_id: scanRunId,
+      semester_key: semesterKey,
+      status: "completed",
+      courses_failed: coursesFailed,
+      courses: batch
+    });
   } catch (error) {
-    console.error("module_handbooks_failed", error);
+    try {
+      await ingestBatch(config, {
+        scan_run_id: scanRunId,
+        semester_key: semesterKey,
+        status: "failed",
+        courses_failed: coursesFailed,
+        error_text: error instanceof Error ? (error.stack ?? error.message) : String(error),
+        courses: batch.splice(0)
+      });
+    } catch (statusError) {
+      console.error("scan_failed_status_update_failed", statusError);
+    }
+    throw error;
   }
 
   try {
-    await enrichExamPlans(config);
+    await runExamPlans(config);
   } catch (error) {
     console.error("exam_plans_failed", error);
   }
@@ -551,6 +581,11 @@ async function main() {
 
   if (command === "scan:once") {
     await scanOnce(config);
+    return;
+  }
+
+  if (command === "module-handbooks:once") {
+    await enrichModuleHandbooks(config);
     return;
   }
 
@@ -569,7 +604,13 @@ async function main() {
   throw new Error(`Unknown command: ${command}`);
 }
 
-void main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+function isCliEntryPoint() {
+  return Boolean(process.argv[1]) && path.resolve(process.argv[1]!) === fileURLToPath(import.meta.url);
+}
+
+if (isCliEntryPoint()) {
+  void main().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}
