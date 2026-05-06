@@ -302,6 +302,7 @@ function examRowHash(row: ExamPlanRowInput): string {
 
 const IT_SECURITY_PROGRAM_KEY = "msc-it-security";
 const IT_SECURITY_OBSOLETE_CATEGORY_KEYS = ["elective-areas", "seminars-labs"];
+const IT_SECURITY_BAD_MASTER_THESIS_CLASS_PATH = ["Masterarbeit"];
 
 async function syncCurriculumCategoriesForPlan(tx: Prisma.TransactionClient, planId: string, programKey: string) {
   for (const requirement of requirementsForProgram(programKey)) {
@@ -410,9 +411,16 @@ async function backfillItSecurityPlanCategories(documents: z.infer<typeof module
 
       for (const course of plan.courses) {
         const currentKey = course.category?.curriculumCategoryKey ?? null;
+        const hasKnownBadMasterThesisAssignment =
+          course.catalogProgramKey === IT_SECURITY_PROGRAM_KEY &&
+          course.category?.source === "curriculum" &&
+          currentKey === "master-thesis" &&
+          course.catalogProgramClassPath.length === IT_SECURITY_BAD_MASTER_THESIS_CLASS_PATH.length &&
+          course.catalogProgramClassPath.every((entry, index) => entry === IT_SECURITY_BAD_MASTER_THESIS_CLASS_PATH[index]);
         const mayReclassify =
           !course.categoryId ||
-          (course.category?.source === "curriculum" && currentKey !== null && IT_SECURITY_OBSOLETE_CATEGORY_KEYS.includes(currentKey));
+          (course.category?.source === "curriculum" && currentKey !== null && IT_SECURITY_OBSOLETE_CATEGORY_KEYS.includes(currentKey)) ||
+          hasKnownBadMasterThesisAssignment;
         if (!mayReclassify) {
           continue;
         }

@@ -242,15 +242,25 @@ function isStudyRelatedSubheading(line: string): boolean {
 }
 
 function isStandaloneSectionHeading(line: string): boolean {
-  return /^(Pflichtbereich|Wahlpflichtbereich|Vertiefung|Anwendungsfach|Mandatory|Elective|Area|Bereich|Katalog|Catalog|Masterarbeit|Master Thesis|General Education|Studium Generale)\b/i.test(
+  return /^(Pflichtbereich|Wahlpflichtbereich|Vertiefung|Anwendungsfach|Mandatory|Elective|Area|Katalog|Catalog|Masterarbeit|Master Thesis|General Education|Studium Generale)$/i.test(
     line
   );
 }
 
 function cleanHeadingLine(line: string): string {
-  return normalizeWhitespace(line)
+  const normalized = normalizeWhitespace(line)
     .replace(/,$/, "")
     .replace(/\s+Veranstaltungen$/i, " Veranstaltungen");
+
+  if (
+    /^(Wahlbereich|Pflichtbereich|Wahlpflichtbereich|Vertiefung|Anwendungsfach|Mandatory|Elective|Area|Katalog|Catalog|Masterarbeit|Master Thesis|General Education|Studium Generale)\b/i.test(
+      normalized
+    )
+  ) {
+    return normalized.replace(/\s+\d{1,4}$/, "");
+  }
+
+  return normalized;
 }
 
 function headingPathFromLines(lines: string[], index: number, currentPath: string[]): { path: string[]; index: number } {
@@ -268,6 +278,10 @@ function headingPathFromLines(lines: string[], index: number, currentPath: strin
 
   if (/^Wahlbereich$/i.test(normalized) && next && !isModuleFieldLine(next)) {
     return { path: [`Wahlbereich ${next}`], index: index + 1 };
+  }
+
+  if (/^Wahlbereich\s+.+/i.test(normalized) && !/^Wahlbereich Studienbegleitende Leistungen$/i.test(normalized)) {
+    return { path: [normalized], index };
   }
 
   if (/^Wahlbereich Studienbegleitende Leistungen$/i.test(normalized)) {

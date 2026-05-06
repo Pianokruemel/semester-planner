@@ -240,4 +240,67 @@ describe("module handbook text parsing", () => {
       ])
     );
   });
+
+  it("keeps IT Security elective context after table-of-contents and prose fragments", () => {
+    const entries = parseModuleHandbookPages([
+      {
+        pageNumber: 3,
+        text: `
+          Wahlbereiche
+          Wahlbereich Cryptography and Foundations                                            4
+          Wahlbereich Systems and Communication Security                                     24
+          Masterarbeit                                                                       248
+        `
+      },
+      {
+        pageNumber: 4,
+        text: `
+          Modulhandbuch
+          M. Sc. IT Security
+
+          Wahlbereich Cryptography and Foundations
+
+          Modulbeschreibung
+          Modulname
+          Deep Learning: Architectures & Methods
+          Modul Nr.
+          20-00-1034
+          6 CP
+          Kurse des Moduls
+          20-00-1034-iv Deep Learning: Architectures & Methods
+          Qualifikationsziele / Lernergebnisse
+          Forschungsprojekte im Bereich der Reinforcement Learning durchzuführen, z.B. im Rahmen einer Bachelor- oder
+          Masterarbeit. Dies betrifft sowohl ein grundlegendes Verständnis der algorithmischen Ansätze.
+
+          Modulbeschreibung
+          Modulname
+          Kryptographische Protokolle
+          Modul Nr.
+          20-00-1032
+          6 CP
+          Kurse des Moduls
+          20-00-1032-iv Kryptographische Protokolle
+        `
+      }
+    ]);
+
+    expect(entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          module_number: "20-00-1034",
+          course_number: "20-00-1034-iv",
+          class_path: ["Wahlbereich Cryptography and Foundations"]
+        }),
+        expect.objectContaining({
+          module_number: "20-00-1032",
+          course_number: "20-00-1032-iv",
+          class_path: ["Wahlbereich Cryptography and Foundations"]
+        })
+      ])
+    );
+    expect(entries.map((entry) => entry.class_path.join(" > "))).not.toContain("Masterarbeit");
+    expect(entries.map((entry) => entry.class_path.join(" > "))).not.toContain(
+      "Bereich der Reinforcement Learning durchzuführen, z.B. im Rahmen einer Bachelor- oder"
+    );
+  });
 });

@@ -51,6 +51,10 @@ describe("IT Security curriculum", () => {
 
   it("maps IT Security handbook paths to precise categories", () => {
     assert.equal(
+      findRequirementForClassPath("msc-it-security", ["Wahlbereich Cryptography and Foundations"])?.key,
+      "cryptography-foundations"
+    );
+    assert.equal(
       findRequirementForClassPath("msc-it-security", ["Wahlbereich Systems and Communication Security"])?.key,
       "systems-communication-security"
     );
