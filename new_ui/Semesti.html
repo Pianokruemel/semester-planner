@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="de" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Semesti — Plani Family</title>
+  <link rel="stylesheet" href="plani-tokens.css" />
+  <style>
+    .shell { display: flex; min-height: 100vh; }
+    .sidebar {
+      width: 260px; flex-shrink: 0;
+      background: var(--sidebar-bg);
+      border-right: 0.5px solid var(--separator);
+      display: flex; flex-direction: column;
+      padding: 12px; gap: 4px; overflow-y: auto;
+      transition: transform var(--dur-base);
+    }
+    @media (max-width: 768px) {
+      .sidebar { position: fixed; inset: 0; z-index: 100; width: 280px; transform: translateX(-100%); box-shadow: var(--shadow-lg); }
+      .sidebar.open { transform: translateX(0); }
+      .sidebar-backdrop { position: fixed; inset: 0; z-index: 99; background: rgba(0,0,0,0.4); }
+    }
+    .brand { display: flex; align-items: center; gap: 0; padding: 8px; margin-bottom: 4px; }
+    .brand-text { font: italic 700 22px/1 var(--font-serif); letter-spacing: -0.03em; color: var(--label-primary); }
+    .brand-mark { height: 24px; width: auto; display: block; margin: 0 4px 0 10px; }
+    .nav-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; font-size: 14px; font-weight: 500; color: var(--label-secondary); cursor: pointer; transition: background var(--dur-fast); }
+    .nav-item:hover { background: var(--sidebar-active); }
+    .nav-item.active { background: var(--sidebar-active); color: var(--label-primary); font-weight: 600; }
+    .nav-label { padding: 16px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--label-tertiary); }
+    .sidebar-footer { margin-top: auto; padding: 8px; border-top: 0.5px solid var(--separator); }
+    .main-area { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    .topbar { height: 50px; flex-shrink: 0; display: flex; align-items: center; gap: 12; padding: 0 20px; border-bottom: 0.5px solid var(--separator); background: var(--material-regular); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); position: sticky; top: 0; z-index: 10; }
+    .topbar-crumbs { font-size: 14px; color: var(--label-tertiary); }
+    .topbar-crumbs strong { color: var(--label-primary); font-weight: 600; }
+    .ic-btn { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 8px; color: var(--label-secondary); }
+    .ic-btn:hover { background: var(--fill-quaternary); }
+    .mobile-menu { display: none; }
+    @media (max-width: 768px) { .mobile-menu { display: grid; } }
+    .content { flex: 1; padding: 24px 24px 64px; overflow-y: auto; }
+    @media (max-width: 768px) { .content { padding: 16px 16px 48px; } }
+  </style>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <script type="text/babel" src="shared-components.jsx"></script>
+  <script type="text/babel" src="semesti-screens.jsx"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const SEMESTI_NAV = [
+      { id: "overview", label: "Semesterübersicht", icon: "layer" },
+      { id: "timetable", label: "Stundenplan", icon: "grid" },
+      { id: "conflicts", label: "Konflikte", icon: "warning" },
+    ];
+
+    function SemestiApp() {
+      const [onboardingStep, setOnboardingStep] = React.useState("disclaimer");
+      const [planToken, setPlanToken] = React.useState("");
+      const [studiengang, setStudiengang] = React.useState("");
+      const [screen, setScreen] = React.useState("overview");
+      const [sideOpen, setSideOpen] = React.useState(false);
+      const [theme, setTheme] = React.useState("dark");
+      const [selected, setSelected] = React.useState([1, 2, 3, 4, 5]);
+      const [visibleCourseIds, setVisibleCourseIds] = React.useState([1, 2, 3, 4, 5, 6, 7, 8]);
+      const [detailCourseId, setDetailCourseId] = React.useState(null);
+      const [showCatalogue, setShowCatalogue] = React.useState(false);
+
+      const handleAddFromCatalogue = (course) => {
+        if (!visibleCourseIds.includes(course.id)) {
+          if (!COURSES_DB.find(c => c.id === course.id)) COURSES_DB.push(course);
+          setVisibleCourseIds([...visibleCourseIds, course.id]);
+        }
+      };
+      const handleRemoveFromOverview = (courseId) => {
+        setVisibleCourseIds(visibleCourseIds.filter(id => id !== courseId));
+        setSelected(selected.filter(id => id !== courseId));
+      };
+
+      const toggleTheme = () => {
+        const next = theme === "dark" ? "light" : "dark";
+        setTheme(next);
+        document.documentElement.setAttribute("data-theme", next);
+      };
+
+
+
+      const studiengaenge = [
+        "Informatik B.Sc.", "Informatik M.Sc.", "Wirtschaftsinformatik B.Sc.", "Wirtschaftsinformatik M.Sc.",
+        "Maschinenwesen B.Sc.", "Maschinenwesen M.Sc.", "Elektrotechnik B.Sc.", "Elektrotechnik M.Sc.",
+        "Mathematik B.Sc.", "Mathematik M.Sc.", "Physik B.Sc.", "Physik M.Sc.",
+        "BWL B.Sc.", "BWL M.Sc.", "Medizin", "Architektur B.Sc.",
+      ];
+      const filteredStudiengaenge = studiengang
+        ? studiengaenge.filter(s => s.toLowerCase().includes(studiengang.toLowerCase()))
+        : studiengaenge;
+
+      if (onboardingStep !== "done") {
+        return (
+          <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "var(--bg-grouped)", padding: 24 }}>
+            <div style={{ width: "100%", maxWidth: 420, textAlign: "center" }}>
+              <img src="assets/plani-icon-dark.png" alt="" style={{ width: 64, height: 64, borderRadius: 16, marginBottom: 14, boxShadow: "var(--shadow-md)" }} />
+              <div style={{ font: "italic 700 32px/1 var(--font-serif)", letterSpacing: "-0.03em", background: "var(--plani-gradient)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent", marginBottom: 6 }}>Semesti.</div>
+              <div style={{ fontSize: 15, color: "var(--label-secondary)", marginBottom: 32 }}>Plane dein Semester.</div>
+
+              {onboardingStep === "disclaimer" && (
+                <AppleCard style={{ textAlign: "left" }}>
+                  <div style={{ display: "grid", gap: 16 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--tint-orange)", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                        <Icon name="warning" size={20} color="#fff" />
+                      </div>
+                      <div style={{ fontSize: 17, fontWeight: 700, color: "var(--label-primary)" }}>Hinweis</div>
+                    </div>
+                    <div style={{ fontSize: 14, lineHeight: 1.55, color: "var(--label-secondary)" }}>
+                      Die in Semesti angezeigten Kursdaten, Zeiten und Prüfungsinformationen werden automatisch zusammengestellt und können fehlerhaft oder veraltet sein. Bitte überprüfe alle Angaben immer anhand der offiziellen Quellen deiner Hochschule.
+                    </div>
+                    <div style={{ fontSize: 13, lineHeight: 1.5, color: "var(--label-tertiary)", padding: "10px 12px", background: "var(--fill-quaternary)", borderRadius: 10 }}>
+                      Semesti übernimmt keine Gewähr für die Richtigkeit oder Vollständigkeit der dargestellten Informationen.
+                    </div>
+                    <AppleBtn variant="gradient" size="lg" full onClick={() => setOnboardingStep("studiengang")}>Verstanden</AppleBtn>
+                  </div>
+                </AppleCard>
+              )}
+
+              {onboardingStep === "studiengang" && (
+                <AppleCard style={{ textAlign: "left" }}>
+                  <div style={{ display: "grid", gap: 16 }}>
+                    <div style={{ fontSize: 17, fontWeight: 700, color: "var(--label-primary)" }}>Dein Studiengang</div>
+                    <div style={{ fontSize: 14, color: "var(--label-secondary)", lineHeight: 1.5 }}>Wähle deinen Studiengang, damit wir dir passende Kurse anzeigen können.</div>
+                    <input
+                      type="text" placeholder="Studiengang suchen…" value={studiengang}
+                      onChange={e => setStudiengang(e.target.value)}
+                      style={{ height: 40, padding: "0 12px", borderRadius: 10, background: "var(--fill-quaternary)", border: "0.5px solid var(--separator)", fontSize: 15, outline: "none", color: "var(--label-primary)" }}
+                    />
+                    <div style={{ maxHeight: 220, overflowY: "auto", display: "grid", gap: 2 }}>
+                      {filteredStudiengaenge.map(s => (
+                        <div key={s} onClick={() => { setStudiengang(s); setOnboardingStep("planChoice"); }}
+                          style={{ padding: "10px 12px", borderRadius: 8, fontSize: 14, fontWeight: 500, color: "var(--label-primary)", cursor: "pointer", transition: "background 0.15s" }}
+                          onMouseEnter={e => e.currentTarget.style.background = "var(--fill-quaternary)"}
+                          onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                          {s}
+                        </div>
+                      ))}
+                      {filteredStudiengaenge.length === 0 && (
+                        <div style={{ padding: "16px 12px", fontSize: 14, color: "var(--label-tertiary)", textAlign: "center" }}>Kein Studiengang gefunden</div>
+                      )}
+                    </div>
+                  </div>
+                </AppleCard>
+              )}
+
+              {onboardingStep === "planChoice" && (
+                <AppleCard style={{ textAlign: "left" }}>
+                  <div style={{ display: "grid", gap: 16 }}>
+                    <div>
+                      <div style={{ fontSize: 17, fontWeight: 700, color: "var(--label-primary)", marginBottom: 4 }}>Semesterplan</div>
+                      <div style={{ fontSize: 13, color: "var(--label-tertiary)" }}>{studiengang}</div>
+                    </div>
+                    <div style={{ display: "grid", gap: 8 }}>
+                      <div onClick={() => setOnboardingStep("done")}
+                        style={{ padding: "16px", borderRadius: 12, border: "0.5px solid var(--separator)", background: "var(--fill-quaternary)", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, transition: "background 0.15s" }}
+                        onMouseEnter={e => e.currentTarget.style.background = "var(--fill-tertiary)"}
+                        onMouseLeave={e => e.currentTarget.style.background = "var(--fill-quaternary)"}>
+                        <div style={{ width: 40, height: 40, borderRadius: 10, background: "var(--tint-blue)", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                          <Icon name="plus" size={20} color="#fff" />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 15, fontWeight: 600, color: "var(--label-primary)" }}>Neuen Plan erstellen</div>
+                          <div style={{ fontSize: 13, color: "var(--label-tertiary)", marginTop: 2 }}>Starte mit einer leeren Semesterplanung</div>
+                        </div>
+                      </div>
+                      <div onClick={() => setOnboardingStep("token")}
+                        style={{ padding: "16px", borderRadius: 12, border: "0.5px solid var(--separator)", background: "var(--fill-quaternary)", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, transition: "background 0.15s" }}
+                        onMouseEnter={e => e.currentTarget.style.background = "var(--fill-tertiary)"}
+                        onMouseLeave={e => e.currentTarget.style.background = "var(--fill-quaternary)"}>
+                        <div style={{ width: 40, height: 40, borderRadius: 10, background: "var(--tint-green)", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                          <Icon name="folder" size={20} color="#fff" />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 15, fontWeight: 600, color: "var(--label-primary)" }}>Bestehenden Plan öffnen</div>
+                          <div style={{ fontSize: 13, color: "var(--label-tertiary)", marginTop: 2 }}>Lade einen zuvor gespeicherten Plan</div>
+                        </div>
+                      </div>
+                    </div>
+                    <button onClick={() => setOnboardingStep("studiengang")}
+                      style={{ background: "none", border: "none", fontSize: 13, color: "var(--tint-blue)", cursor: "pointer", fontWeight: 500, padding: 0 }}>← Studiengang ändern</button>
+                  </div>
+                </AppleCard>
+              )}
+
+              {onboardingStep === "token" && (
+                <AppleCard style={{ textAlign: "left" }}>
+                  <div style={{ display: "grid", gap: 16 }}>
+                    <div>
+                      <div style={{ fontSize: 17, fontWeight: 700, color: "var(--label-primary)", marginBottom: 4 }}>Plan öffnen</div>
+                      <div style={{ fontSize: 14, color: "var(--label-secondary)", lineHeight: 1.5 }}>Gib deinen Zugangstoken ein, um einen bestehenden Semesterplan zu laden.</div>
+                    </div>
+                    <div style={{ display: "grid", gap: 5 }}>
+                      <label style={{ fontSize: 13, fontWeight: 500, color: "var(--label-secondary)" }}>Token</label>
+                      <input
+                        type="text" placeholder="z.B. a3f8-k29x-m4pq" value={planToken}
+                        onChange={e => setPlanToken(e.target.value)}
+                        style={{ height: 40, padding: "0 12px", borderRadius: 10, background: "var(--fill-quaternary)", border: "0.5px solid var(--separator)", fontSize: 15, outline: "none", color: "var(--label-primary)", fontFamily: "var(--font-mono, monospace)", letterSpacing: "0.04em" }}
+                      />
+                    </div>
+                    <AppleBtn variant="gradient" size="lg" full onClick={() => { if (planToken.trim()) setOnboardingStep("done"); }}>Plan laden</AppleBtn>
+                    <button onClick={() => setOnboardingStep("planChoice")}
+                      style={{ background: "none", border: "none", fontSize: 13, color: "var(--tint-blue)", cursor: "pointer", fontWeight: 500, padding: 0 }}>← Zurück</button>
+                  </div>
+                </AppleCard>
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      const detailCourse = detailCourseId ? COURSES_DB.find(c => c.id === detailCourseId) : null;
+      const screenLabel = detailCourse ? `Semesterübersicht › ${detailCourse.name}` : (SEMESTI_NAV.find(n => n.id === screen)?.label || "Übersicht");
+      const screenMap = {
+        overview: detailCourseId ? <CourseDetailView courseId={detailCourseId} selected={selected} setSelected={setSelected} onBack={() => setDetailCourseId(null)} /> : <SemesterOverview selected={selected} setSelected={setSelected} onCourseDetail={(id) => setDetailCourseId(id)} visibleCourseIds={visibleCourseIds} setVisibleCourseIds={setVisibleCourseIds} onOpenCatalogue={() => setShowCatalogue(true)} />,
+        timetable: <TimetableView selected={selected} />,
+        conflicts: <ConflictsView selected={selected} />,
+      };
+
+      return (
+        <div className="shell">
+          {sideOpen && <div className="sidebar-backdrop" onClick={() => setSideOpen(false)}></div>}
+          <nav className={`sidebar ${sideOpen ? "open" : ""}`}>
+            <div className="brand">
+              <span className="brand-text">Semesti</span><img className="brand-mark" src="semesti-p-light.png" alt="P" /><span className="brand-text">lani</span>
+            </div>
+            {SEMESTI_NAV.map(n => (
+              <div key={n.id} className={`nav-item ${screen === n.id ? "active" : ""}`}
+                onClick={() => { setScreen(n.id); setDetailCourseId(null); setSideOpen(false); }}>
+                <Icon name={n.icon} size={18} />
+                <span>{n.label}</span>
+              </div>
+            ))}
+            <div className="nav-label">Gewählte Kurse</div>
+            {COURSES_DB.filter(c => selected.includes(c.id)).map(c => (
+              <div key={c.id} className="nav-item" style={{ fontSize: 13, cursor: "pointer" }}
+                onClick={() => { setScreen("overview"); setDetailCourseId(c.id); setSideOpen(false); }}>
+                <span style={{ width: 10, height: 10, borderRadius: "50%", background: c.color, flexShrink: 0 }}></span>
+                {c.name}
+              </div>
+            ))}
+
+          </nav>
+          <div className="main-area">
+            <div className="topbar">
+              <button className="ic-btn mobile-menu" onClick={() => setSideOpen(true)}><Icon name="menu" size={20} /></button>
+              <div className="topbar-crumbs">Semesti · <strong>{screenLabel}</strong></div>
+              <div style={{ flex: 1 }}></div>
+              {!detailCourseId && <AppleBtn variant="gradient" size="sm" icon="plus" onClick={() => setShowCatalogue(true)}>Vorlesung hinzufügen</AppleBtn>}
+              <button className="ic-btn" onClick={toggleTheme}><Icon name={theme === "dark" ? "sun" : "moon"} size={18} /></button>
+            </div>
+            <div className="content">
+              {screenMap[screen] || <SemesterOverview selected={selected} setSelected={setSelected} visibleCourseIds={visibleCourseIds} setVisibleCourseIds={setVisibleCourseIds} />}
+            </div>
+          </div>
+          <AddCourseModal
+            visible={showCatalogue}
+            onClose={() => setShowCatalogue(false)}
+            onAdd={handleAddFromCatalogue}
+            onRemove={handleRemoveFromOverview}
+            visibleIds={visibleCourseIds}
+            selected={selected}
+          />
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<SemestiApp />);
+  </script>
+</body>
+</html>

@@ -18,6 +18,7 @@ type PlannedCourseWithRelations = PlannedCourse & {
 type PlanWithRelations = {
   id: string;
   name: string;
+  shareToken: string | null;
   preferredStudyProgramKey: string | null;
   categories: PlanCategory[];
   courses: PlannedCourseWithRelations[];
@@ -89,6 +90,8 @@ export function serializePlannedCourse(course: PlannedCourseWithRelations) {
     cp: course.cp,
     category_id: course.categoryId,
     course_number: course.courseNumber,
+    instructor: course.instructor,
+    color_tag: course.colorTag,
     is_active: course.isActive,
     category: course.category
       ? {
@@ -230,6 +233,7 @@ export function serializePlan(plan: PlanWithRelations) {
   return {
     id: plan.id,
     name: plan.name,
+    share_token: plan.shareToken,
     preferred_study_program_key: plan.preferredStudyProgramKey,
     categories: plan.categories
       .slice()

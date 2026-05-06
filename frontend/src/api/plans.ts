@@ -1,5 +1,5 @@
 import { apiClient } from "./client";
-import { PlannerSnapshot, SnapshotCategory, SnapshotCourse, SnapshotExam, normalizePlannerSnapshot } from "./types";
+import { CourseColorTag, PlannerSnapshot, SnapshotCategory, SnapshotCourse, SnapshotExam, normalizePlannerSnapshot } from "./types";
 
 export type BackendPlan = PlannerSnapshot & {
   id: string;
@@ -23,6 +23,16 @@ export async function createPlan(preferredStudyProgramKey: string): Promise<Back
 
 export async function fetchPlan(planId: string): Promise<BackendPlan> {
   const response = await apiClient.get<BackendPlan>(`/plans/${encodeURIComponent(planId)}`);
+  return normalizePlan(response.data);
+}
+
+export async function fetchPlanByToken(token: string): Promise<BackendPlan> {
+  const response = await apiClient.get<BackendPlan>(`/plans/by-token/${encodeURIComponent(token)}`);
+  return normalizePlan(response.data);
+}
+
+export async function rotateShareToken(planId: string): Promise<BackendPlan> {
+  const response = await apiClient.post<BackendPlan>(`/plans/${encodeURIComponent(planId)}/rotate-token`);
   return normalizePlan(response.data);
 }
 
@@ -73,6 +83,8 @@ export type CoursePayload = {
   cp: number;
   category_id: string;
   course_number: string | null;
+  instructor?: string | null;
+  color_tag?: CourseColorTag | null;
   appointments_raw: string;
 };
 
@@ -98,6 +110,8 @@ export async function patchCourse(planId: string, id: string, payload: Partial<S
       cp: payload.cp,
       category_id: payload.category_id,
       course_number: payload.course_number,
+      instructor: payload.instructor,
+      color_tag: payload.color_tag,
       is_active: payload.is_active
     }
   );
@@ -176,6 +190,7 @@ export async function importCatalogCourse(
     category_id?: string | null;
     abbreviation?: string;
     cp_override?: number;
+    color_tag?: CourseColorTag | null;
     selected_subgroup_key?: string | null;
   }
 ): Promise<{ plan: BackendPlan; course_id: string }> {

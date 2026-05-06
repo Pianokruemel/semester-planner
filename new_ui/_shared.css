@@ -1,0 +1,58 @@
+/* Shared layout for design-system preview cards.
+   Each card renders inside a fixed viewport; this file gives them
+   consistent inner padding and a neutral page background. */
+@import url("colors_and_type.css");
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg-base);
+  color: var(--fg-primary);
+  font: var(--t-body);
+  font-family: var(--font-sans);
+  letter-spacing: var(--tracking-normal);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+.page {
+  padding: 48px 56px;
+  min-height: 100vh;
+}
+
+.page > h1 {
+  font: var(--t-large-title);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--tracking-tight);
+  margin: 0 0 4px;
+}
+.page > p.lede {
+  font: var(--t-body);
+  color: var(--fg-secondary);
+  margin: 0 0 40px;
+  max-width: 640px;
+}
+
+.section { margin-bottom: 56px; }
+.section > h2 {
+  font: var(--t-title3);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-tight);
+  margin: 0 0 4px;
+}
+.section > h2 + p {
+  font: var(--t-subhead);
+  color: var(--fg-secondary);
+  margin: 0 0 24px;
+  max-width: 640px;
+}
+
+.eyebrow {
+  font: var(--t-caption1);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-tertiary);
+}

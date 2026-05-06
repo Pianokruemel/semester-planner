@@ -34,6 +34,8 @@ export function useCourses() {
       cp: course.cp,
       categoryId: course.category_id,
       courseNumber: course.course_number,
+      instructor: course.instructor,
+      colorTag: course.color_tag,
       isActive: course.is_active,
       category: course.category_id ? categoryMap.get(course.category_id) ?? null : null,
       exam: course.exam

@@ -36,6 +36,16 @@ export type SnapshotExam = {
 
 export type CatalogSyncStatus = "manual" | "current" | "outdated" | "modified" | "missing";
 
+export type CourseColorTag =
+  | "chip-1"
+  | "chip-2"
+  | "chip-3"
+  | "chip-4"
+  | "chip-5"
+  | "chip-6"
+  | "chip-7"
+  | "chip-8";
+
 export type SnapshotCourse = {
   id: string;
   catalog_course_id: string | null;
@@ -58,6 +68,8 @@ export type SnapshotCourse = {
   cp: number;
   category_id: string | null;
   course_number: string | null;
+  instructor: string | null;
+  color_tag: CourseColorTag | null;
   is_active: boolean;
   exam: SnapshotExam | null;
   appointments: SnapshotAppointment[];
@@ -66,6 +78,7 @@ export type SnapshotCourse = {
 export type PlannerSnapshot = {
   export_version: typeof plannerSnapshotVersion;
   settings: Record<string, never>;
+  share_token: string | null;
   preferred_study_program_key: string | null;
   categories: SnapshotCategory[];
   requirement_groups: SnapshotRequirementGroup[];
@@ -110,6 +123,8 @@ export type PlannerCourse = {
   cp: number;
   categoryId: string | null;
   courseNumber: string | null;
+  instructor: string | null;
+  colorTag: CourseColorTag | null;
   isActive: boolean;
   category: SnapshotCategory | null;
   exam: PlannerExam | null;
@@ -336,6 +351,8 @@ function normalizeCourse(input: unknown, index: number, categoryIds: Set<string>
   const catalogCourseId = normalizeNullableText(input.catalog_course_id);
   const catalogStatus = normalizeCatalogStatus(input.catalog_status, catalogCourseId);
   const courseNumber = normalizeNullableText(input.course_number);
+  const instructor = normalizeNullableText(input.instructor);
+  const colorTag = normalizeColorTag(input.color_tag);
   const exam = normalizeExam(input.exam, index);
   const appointments = Array.isArray(input.appointments)
     ? input.appointments.map((appointment, appointmentIndex) => normalizeAppointment(appointment, appointmentIndex))
@@ -365,10 +382,19 @@ function normalizeCourse(input: unknown, index: number, categoryIds: Set<string>
     cp,
     category_id: categoryId,
     course_number: courseNumber,
+    instructor,
+    color_tag: colorTag,
     is_active: input.is_active !== false,
     exam,
     appointments
   };
+}
+
+function normalizeColorTag(input: unknown): CourseColorTag | null {
+  if (typeof input !== "string") {
+    return null;
+  }
+  return /^chip-[1-8]$/.test(input) ? (input as CourseColorTag) : null;
 }
 
 export function normalizePlannerSnapshot(input: unknown): PlannerSnapshot {
@@ -390,6 +416,7 @@ export function normalizePlannerSnapshot(input: unknown): PlannerSnapshot {
   return {
     export_version: plannerSnapshotVersion,
     settings: {},
+    share_token: normalizeNullableText(source.share_token),
     preferred_study_program_key: normalizeNullableText(source.preferred_study_program_key),
     categories,
     requirement_groups: requirementGroups,

@@ -1,0 +1,203 @@
+/* ============================================================
+   Plani Family — Design Tokens v2
+   Apple HIG-authentic. Light + dark. Mobile-first.
+   ============================================================ */
+
+:root, [data-theme="light"] {
+  color-scheme: light;
+
+  /* ---- Surfaces (Apple grouped style) ---- */
+  --bg-primary:       #FFFFFF;
+  --bg-secondary:     #F0F0F5;
+  --bg-tertiary:      #FFFFFF;
+  --bg-grouped:       #EEEEF3;
+  --bg-grouped-secondary: #FFFFFF;
+  --bg-elevated:      #FFFFFF;
+  --bg-input:         #E2E2E8;
+  --bg-hover:         rgba(0,0,0,0.06);
+  --bg-active:        rgba(0,0,0,0.10);
+
+  /* ---- Material / glass ---- */
+  --material-thin:    rgba(245,245,250,0.78);
+  --material-regular: rgba(245,245,250,0.88);
+  --material-thick:   rgba(245,245,250,0.95);
+
+  /* ---- Separators ---- */
+  --separator:        rgba(60,60,67,0.20);
+  --separator-opaque: #B8B8BC;
+
+  /* ---- Labels ---- */
+  --label-primary:    rgba(0,0,0,0.95);
+  --label-secondary:  rgba(40,40,50,0.72);
+  --label-tertiary:   rgba(40,40,50,0.48);
+  --label-quaternary: rgba(40,40,50,0.28);
+
+  /* ---- Fills ---- */
+  --fill-primary:     rgba(100,100,110,0.26);
+  --fill-secondary:   rgba(100,100,110,0.20);
+  --fill-tertiary:    rgba(100,100,110,0.15);
+  --fill-quaternary:  rgba(100,100,110,0.10);
+
+  /* ---- Tint ---- */
+  --tint-blue:    #0066E0;
+  --tint-green:   #28A745;
+  --tint-red:     #E83030;
+  --tint-orange:  #D97A00;
+  --tint-yellow:  #C89E00;
+  --tint-purple:  #9540BF;
+  --tint-pink:    #E0245E;
+  --tint-teal:    #0EA5C9;
+  --tint-indigo:  #4F4DC6;
+
+  /* ---- Plani brand gradient ---- */
+  --plani-violet:  #B7A0E5;
+  --plani-blue:    #9CC3F0;
+  --plani-mint:    #B6E3CC;
+  --plani-yellow:  #F4E59A;
+  --plani-gradient: linear-gradient(135deg, #9B80D4 0%, #7AAAE8 34%, #8AD4AF 68%, #E2D06A 100%);
+  --plani-gradient-vivid: linear-gradient(135deg, #8A6CC8 0%, #5E94E0 34%, #60C494 68%, #D4BF3E 100%);
+
+  /* ---- Shadows (Apple style) ---- */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.06);
+  --shadow-md: 0 4px 14px rgba(0,0,0,0.12), 0 2px 6px rgba(0,0,0,0.06);
+  --shadow-lg: 0 12px 40px rgba(0,0,0,0.16), 0 4px 12px rgba(0,0,0,0.08);
+  --shadow-card: 0 0.5px 0 rgba(0,0,0,0.06), 0 1px 4px rgba(0,0,0,0.10);
+
+  /* ---- On-accent ---- */
+  --on-accent: #FFFFFF;
+  --on-gradient: #1A1A22;
+
+  /* ---- Sidebar ---- */
+  --sidebar-bg: #E8E8EF;
+  --sidebar-active: rgba(0,0,0,0.08);
+
+  /* ---- Chip overrides for light (darker/more saturated for readability) ---- */
+  --chip-1: #8B6FC0; --chip-2: #5A92D4; --chip-3: #3BA5BD;
+  --chip-4: #4BAF82; --chip-5: #7EA33E; --chip-6: #C5A820;
+  --chip-7: #C88A50; --chip-8: #D06888;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg-primary:       #000000;
+  --bg-secondary:     #1C1C1E;
+  --bg-tertiary:      #2C2C2E;
+  --bg-grouped:       #000000;
+  --bg-grouped-secondary: #1C1C1E;
+  --bg-elevated:      #1C1C1E;
+  --bg-input:         #2C2C2E;
+  --bg-hover:         rgba(255,255,255,0.06);
+  --bg-active:        rgba(255,255,255,0.10);
+
+  --material-thin:    rgba(30,30,30,0.72);
+  --material-regular: rgba(30,30,30,0.82);
+  --material-thick:   rgba(30,30,30,0.92);
+
+  --separator:        rgba(84,84,88,0.34);
+  --separator-opaque: #38383A;
+
+  --label-primary:    rgba(255,255,255,0.92);
+  --label-secondary:  rgba(235,235,245,0.60);
+  --label-tertiary:   rgba(235,235,245,0.30);
+  --label-quaternary: rgba(235,235,245,0.16);
+
+  --fill-primary:     rgba(120,120,128,0.36);
+  --fill-secondary:   rgba(120,120,128,0.32);
+  --fill-tertiary:    rgba(118,118,128,0.24);
+  --fill-quaternary:  rgba(116,116,128,0.18);
+
+  --tint-blue:    #0A84FF;
+  --tint-green:   #30D158;
+  --tint-red:     #FF453A;
+  --tint-orange:  #FF9F0A;
+  --tint-yellow:  #FFD60A;
+  --tint-purple:  #BF5AF2;
+  --tint-pink:    #FF375F;
+  --tint-teal:    #64D2FF;
+  --tint-indigo:  #5E5CE6;
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 14px rgba(0,0,0,0.3);
+  --shadow-lg: 0 12px 40px rgba(0,0,0,0.4);
+  --shadow-card: 0 0.5px 0 rgba(255,255,255,0.04) inset, 0 1px 3px rgba(0,0,0,0.3);
+
+  --on-accent: #FFFFFF;
+  --on-gradient: #000000;
+
+  --sidebar-bg: #1C1C1E;
+  --sidebar-active: rgba(255,255,255,0.08);
+}
+
+/* ---- Subject chips (dark mode defaults) ---- */
+[data-theme="dark"] {
+  --chip-1: #B7A0E5; --chip-2: #9CC3F0; --chip-3: #7FCFE0;
+  --chip-4: #B6E3CC; --chip-5: #D7E8A7; --chip-6: #F4E59A;
+  --chip-7: #F2C8A0; --chip-8: #F0AEC0;
+}
+
+/* ---- Typography ---- */
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", system-ui, sans-serif;
+  --font-rounded: ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-serif: "New York", "Charter", "Iowan Old Style", Georgia, serif;
+
+  --fw-regular:  400;
+  --fw-medium:   500;
+  --fw-semibold: 600;
+  --fw-bold:     700;
+
+  /* iOS type scale */
+  --text-caption2:  11px;
+  --text-caption1:  12px;
+  --text-footnote:  13px;
+  --text-subhead:   15px;
+  --text-callout:   16px;
+  --text-body:      17px;
+  --text-headline:  17px;
+  --text-title3:    20px;
+  --text-title2:    22px;
+  --text-title1:    28px;
+  --text-largeTitle: 34px;
+}
+
+/* ---- Spacing ---- */
+:root {
+  --sp-1: 2px; --sp-2: 4px; --sp-3: 8px; --sp-4: 12px;
+  --sp-5: 16px; --sp-6: 20px; --sp-7: 24px; --sp-8: 32px;
+  --sp-9: 40px; --sp-10: 48px; --sp-11: 64px; --sp-12: 80px;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-2xl: 28px;
+  --radius-pill: 999px;
+  /* Apple continuous corners via mask — approximate with border-radius */
+}
+
+/* ---- Easing ---- */
+:root {
+  --ease-default: cubic-bezier(0.25, 0.1, 0.25, 1.0);
+  --ease-spring:  cubic-bezier(0.34, 1.56, 0.64, 1);
+  --dur-fast: 150ms;
+  --dur-base: 250ms;
+  --dur-slow: 400ms;
+}
+
+/* ---- Reset ---- */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: 1.47;
+  color: var(--label-primary);
+  background: var(--bg-grouped);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+button { font: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+input, textarea, select { font: inherit; color: inherit; }
+a { color: var(--tint-blue); text-decoration: none; }

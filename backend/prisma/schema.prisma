@@ -10,6 +10,7 @@ datasource db {
 model Plan {
   id                       String               @id @default(uuid()) @db.Uuid
   name                     String               @default("Mein Stundenplan")
+  shareToken               String?              @unique @map("share_token") @db.VarChar(32)
   preferredStudyProgramKey String?              @map("preferred_study_program_key")
   preferredStudyProgram    CatalogStudyProgram? @relation(fields: [preferredStudyProgramKey], references: [key], onDelete: SetNull)
   createdAt                DateTime             @default(now()) @map("created_at")
@@ -64,6 +65,8 @@ model PlannedCourse {
   abbreviation                   String               @db.VarChar(32)
   cp                             Int
   courseNumber                   String?              @map("course_number")
+  instructor                     String?
+  colorTag                       String?              @map("color_tag") @db.VarChar(16)
   isActive                       Boolean              @default(true) @map("is_active")
   createdAt                      DateTime             @default(now()) @map("created_at")
   updatedAt                      DateTime             @updatedAt @map("updated_at")

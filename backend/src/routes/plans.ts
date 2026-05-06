@@ -8,12 +8,15 @@ import { dateFromYmd } from "../lib/dates";
 import { findProgrammeMatchesForCourseNumber, serializeProgrammeMatch } from "../lib/moduleHandbooks";
 import { prisma } from "../lib/prisma";
 import { serializePlan } from "../lib/serialization";
+import { generateUniqueShareToken } from "../lib/shareToken";
 import { HttpError } from "../middleware/errorHandler";
 
 const uuidSchema = z.string().uuid();
 const hexColorSchema = z.string().regex(/^#[0-9A-Fa-f]{6}$/);
 const timeSchema = z.string().regex(/^\d{2}:\d{2}$/);
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const colorTagSchema = z.string().regex(/^chip-[1-8]$/);
+const shareTokenSchema = z.string().regex(/^[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}$/);
 
 const includePlan = {
   categories: true,
@@ -60,6 +63,8 @@ const manualCourseSchema = z.object({
   cp: z.number().int().positive(),
   category_id: uuidSchema,
   course_number: z.string().trim().min(1).nullable().optional(),
+  instructor: z.string().trim().min(1).nullable().optional(),
+  color_tag: colorTagSchema.nullable().optional(),
   appointments_raw: z.string().default("")
 });
 
@@ -70,6 +75,8 @@ const coursePatchSchema = z
     cp: z.number().int().positive().optional(),
     category_id: uuidSchema.optional(),
     course_number: z.string().trim().min(1).nullable().optional(),
+    instructor: z.string().trim().min(1).nullable().optional(),
+    color_tag: colorTagSchema.nullable().optional(),
     is_active: z.boolean().optional(),
     appointments_raw: z.string().optional()
   })
@@ -82,6 +89,7 @@ const catalogImportSchema = z.object({
   category_id: uuidSchema.nullable().optional(),
   abbreviation: z.string().trim().min(1).max(32).optional(),
   cp_override: z.number().int().positive().optional(),
+  color_tag: colorTagSchema.nullable().optional(),
   selected_subgroup_key: z.string().trim().min(1).nullable().optional()
 });
 
@@ -98,6 +106,19 @@ function normalizeCourseNumber(value: string | null | undefined): string | null 
 
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeOptionalText(value: string | null | undefined): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+async function nextColorTag(planId: string): Promise<string> {
+  const count = await prisma.plannedCourse.count({ where: { planId } });
+  return `chip-${(count % 8) + 1}`;
 }
 
 function appointmentCreateMany(rawText: string) {
@@ -344,10 +365,12 @@ export const plansRouter = Router();
 plansRouter.post("/", async (req, res) => {
   const payload = planCreateSchema.parse(req.body ?? {});
   await ensureStudyProgram(payload.preferred_study_program_key);
+  const shareToken = await generateUniqueShareToken();
   const plan = await prisma.$transaction(async (tx) => {
     const created = await tx.plan.create({
       data: {
-        preferredStudyProgramKey: payload.preferred_study_program_key
+        preferredStudyProgramKey: payload.preferred_study_program_key,
+        shareToken
       },
       select: { id: true }
     });
@@ -363,9 +386,32 @@ plansRouter.post("/", async (req, res) => {
   res.status(201).json(serializePlan(plan));
 });
 
+plansRouter.get("/by-token/:token", async (req, res) => {
+  const token = shareTokenSchema.parse(req.params.token);
+  const plan = await prisma.plan.findUnique({ where: { shareToken: token }, include: includePlan });
+  if (!plan) {
+    throw new HttpError(404, "Plan nicht gefunden.");
+  }
+  res.json(serializePlan(plan));
+});
+
+plansRouter.post("/:planId/rotate-token", async (req, res) => {
+  const planId = uuidSchema.parse(req.params.planId);
+  await ensurePlan(planId);
+  const shareToken = await generateUniqueShareToken();
+  await prisma.plan.update({ where: { id: planId }, data: { shareToken } });
+  res.json(serializePlan(await fetchPlan(planId)));
+});
+
 plansRouter.get("/:planId", async (req, res) => {
   const planId = uuidSchema.parse(req.params.planId);
-  res.json(serializePlan(await fetchPlan(planId)));
+  const plan = await fetchPlan(planId);
+  if (!plan.shareToken) {
+    const shareToken = await generateUniqueShareToken();
+    await prisma.plan.update({ where: { id: planId }, data: { shareToken } });
+    plan.shareToken = shareToken;
+  }
+  res.json(serializePlan(plan));
 });
 
 plansRouter.patch("/:planId", async (req, res) => {
@@ -592,6 +638,7 @@ plansRouter.post("/:planId/courses", async (req, res) => {
   await ensureCategory(planId, payload.category_id);
 
   const appointments = appointmentCreateMany(payload.appointments_raw);
+  const colorTag = payload.color_tag ?? (await nextColorTag(planId));
   await prisma.plannedCourse.create({
     data: {
       planId,
@@ -600,6 +647,8 @@ plansRouter.post("/:planId/courses", async (req, res) => {
       cp: payload.cp,
       categoryId: payload.category_id ?? null,
       courseNumber: normalizeCourseNumber(payload.course_number),
+      instructor: normalizeOptionalText(payload.instructor),
+      colorTag,
       appointments: {
         createMany: {
           data: appointments
@@ -658,6 +707,7 @@ plansRouter.post("/:planId/courses/import-catalog", async (req, res) => {
   }
 
   const selected = selectedCatalogAppointmentData(catalogCourse, payload.selected_subgroup_key);
+  const colorTag = payload.color_tag ?? (await nextColorTag(planId));
   const plannedCourse = await prisma.plannedCourse.create({
     data: {
       planId,
@@ -678,6 +728,8 @@ plansRouter.post("/:planId/courses/import-catalog", async (req, res) => {
       abbreviation: payload.abbreviation ?? catalogCourse.abbreviation ?? catalogCourse.courseNumber ?? catalogCourse.title.slice(0, 32),
       cp,
       courseNumber: catalogCourse.courseNumber,
+      instructor: catalogCourse.instructors[0] ?? null,
+      colorTag,
       appointments: {
         createMany: {
           data: selected.appointments
@@ -771,6 +823,12 @@ plansRouter.patch("/:planId/courses/:courseId", async (req, res) => {
     }
     if (payload.course_number !== undefined) {
       data.courseNumber = normalizeCourseNumber(payload.course_number);
+    }
+    if (payload.instructor !== undefined) {
+      data.instructor = normalizeOptionalText(payload.instructor);
+    }
+    if (payload.color_tag !== undefined) {
+      data.colorTag = payload.color_tag;
     }
     if (payload.is_active !== undefined) {
       data.isActive = payload.is_active;
