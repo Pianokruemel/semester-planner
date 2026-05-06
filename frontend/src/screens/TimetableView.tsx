@@ -14,15 +14,14 @@ const DAYS = ["Mo", "Di", "Mi", "Do", "Fr"];
 const HOURS = ["08", "09", "10", "11", "12", "13", "14", "15", "16", "17"];
 const ROW_H = 52;
 
-type GridEntry = UICourse & { di: number; startH: number; spanH: number; apptType: "vl" | "ub" };
+type GridEntry = UICourse & { di: number; startH: number; startMin: number; spanH: number; apptType: "vl" | "ub" };
 
 export function TimetableView() {
   const navigate = useNavigate();
   const { uiCourses } = usePlan();
 
   const picked = uiCourses.filter((c) => c.isActive);
-  const grid: GridEntry[] = [];
-  const seen = new Set<string>();
+  const slots = new Map<string, { entry: GridEntry; count: number }>();
 
   picked.forEach((c) => {
     c.appointments.forEach((a) => {
@@ -32,13 +31,24 @@ export function TimetableView() {
       const di = dt.getDay(); // 0=Sun
       if (di < 1 || di > 5) return;
       const startH = dt.getHours();
+      const startMin = dt.getMinutes();
       const spanH = (de.getTime() - dt.getTime()) / (1000 * 60 * 60);
-      const key = `${c.id}-${di - 1}-${startH}`;
-      if (seen.has(key)) return;
-      seen.add(key);
-      grid.push({ ...c, di: di - 1, startH: startH - 8, spanH, apptType: a.type });
+      const key = `${c.id}-${di - 1}-${startH}-${startMin}-${a.type}`;
+      const existing = slots.get(key);
+      if (existing) {
+        existing.count += 1;
+        return;
+      }
+      slots.set(key, {
+        entry: { ...c, di: di - 1, startH: startH - 8, startMin, spanH, apptType: a.type },
+        count: 1
+      });
     });
   });
+
+  const grid: GridEntry[] = Array.from(slots.values())
+    .filter((s) => s.count > 3)
+    .map((s) => s.entry);
 
   return (
     <div>
@@ -98,7 +108,7 @@ export function TimetableView() {
                         key={i}
                         style={{
                           position: "absolute",
-                          top: 2,
+                          top: (e.startMin / 60) * ROW_H + 2,
                           left: ev.length > 1 ? `${(i / ev.length) * 100}%` : 2,
                           right: ev.length > 1 ? `${((ev.length - i - 1) / ev.length) * 100}%` : 2,
                           height: e.spanH * ROW_H - 4,

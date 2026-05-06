@@ -55,10 +55,12 @@ export function computeConflicts(picked: UICourse[]): {
 } {
   const pairs: ConflictPair[] = [];
   const perCourse: Record<string, PerCourseConflict> = {};
+  const clashingStarts: Record<string, Set<string>> = {};
 
   picked.forEach((c) => {
     if (!perCourse[c.id]) {
       perCourse[c.id] = { clashCount: 0, totalAppts: c.appointments.length, worstExamSev: null };
+      clashingStarts[c.id] = new Set();
     }
   });
 
@@ -80,10 +82,10 @@ export function computeConflicts(picked: UICourse[]): {
 
       if (clashes.length > 0 || sev) {
         pairs.push({ a, b, clashes, examSev: sev });
-        const uniqueA = new Set(clashes.map((c) => c.apptA.start));
-        const uniqueB = new Set(clashes.map((c) => c.apptB.start));
-        perCourse[a.id].clashCount += uniqueA.size;
-        perCourse[b.id].clashCount += uniqueB.size;
+        clashes.forEach((c) => {
+          clashingStarts[a.id].add(c.apptA.start);
+          clashingStarts[b.id].add(c.apptB.start);
+        });
         if (sev) {
           const rank = EXAM_SEVERITY[sev].rank;
           [a.id, b.id].forEach((id) => {
@@ -93,6 +95,10 @@ export function computeConflicts(picked: UICourse[]): {
         }
       }
     });
+  });
+
+  picked.forEach((c) => {
+    perCourse[c.id].clashCount = clashingStarts[c.id].size;
   });
 
   return { pairs, perCourse };
