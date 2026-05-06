@@ -1,6 +1,7 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { usePlan } from "./app/PlanProvider";
 import { OnboardingFlow } from "./onboarding/OnboardingFlow";
+import { ShareLoader } from "./onboarding/ShareLoader";
 import { Shell } from "./shell/Shell";
 import { SemesterOverview } from "./screens/SemesterOverview";
 import { TimetableView } from "./screens/TimetableView";
@@ -9,6 +10,16 @@ import { CourseDetailView } from "./screens/CourseDetailView";
 
 export default function App() {
   const { plan, isLoading } = usePlan();
+  const location = useLocation();
+  const isShareRoute = location.pathname.startsWith("/share/");
+
+  if (isShareRoute) {
+    return (
+      <Routes>
+        <Route path="/share/:token" element={<ShareLoader />} />
+      </Routes>
+    );
+  }
 
   if (isLoading && !plan) {
     return (

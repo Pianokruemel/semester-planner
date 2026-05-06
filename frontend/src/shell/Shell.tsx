@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Outlet, useLocation, useNavigate, useParams } from "react-router-dom";
 import { Icon, type IconName } from "../components/Icon";
 import { AppleBtn } from "../components/AppleBtn";
+import { ShareModal } from "../components/ShareModal";
 import { usePlan } from "../app/PlanProvider";
 import { AddCourseModal } from "../catalog/AddCourseModal";
 
@@ -20,6 +21,7 @@ export function Shell() {
   const { uiCourses, theme, toggleTheme } = usePlan();
   const [sideOpen, setSideOpen] = useState(false);
   const [showCatalogue, setShowCatalogue] = useState(false);
+  const [showShare, setShowShare] = useState(false);
 
   const activeNavId = useMemo(() => {
     if (location.pathname.startsWith("/stundenplan")) return "timetable";
@@ -100,6 +102,9 @@ export function Shell() {
               Vorlesung hinzufügen
             </AppleBtn>
           )}
+          <button className="ic-btn" onClick={() => setShowShare(true)} aria-label="Plan teilen">
+            <Icon name="export2" size={18} />
+          </button>
           <button className="ic-btn" onClick={toggleTheme} aria-label="Theme umschalten">
             <Icon name={theme === "dark" ? "sun" : "moon"} size={18} />
           </button>
@@ -110,6 +115,7 @@ export function Shell() {
       </div>
 
       <AddCourseModal visible={showCatalogue} onClose={() => setShowCatalogue(false)} />
+      <ShareModal visible={showShare} onClose={() => setShowShare(false)} />
     </div>
   );
 }
