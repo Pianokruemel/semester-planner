@@ -1,0 +1,122 @@
+import { Fragment } from "react";
+import { useNavigate } from "react-router-dom";
+import { AppleCard } from "../components/AppleCard";
+import { EventChip } from "../components/EventChip";
+import { PageHeader } from "../components/PageHeader";
+import { SegmentedControl } from "../components/SegmentedControl";
+import { usePlan } from "../app/PlanProvider";
+import { TYPE_SHORT } from "../lib/conflicts";
+import type { UICourse } from "../app/adapter";
+
+const SEGMENTS = ["Übersicht", "Stundenplan", "Konflikte"];
+const SEGMENT_PATHS = ["/", "/stundenplan", "/konflikte"];
+const DAYS = ["Mo", "Di", "Mi", "Do", "Fr"];
+const HOURS = ["08", "09", "10", "11", "12", "13", "14", "15", "16", "17"];
+const ROW_H = 52;
+
+type GridEntry = UICourse & { di: number; startH: number; spanH: number; apptType: "vl" | "ub" };
+
+export function TimetableView() {
+  const navigate = useNavigate();
+  const { uiCourses } = usePlan();
+
+  const picked = uiCourses.filter((c) => c.isActive);
+  const grid: GridEntry[] = [];
+  const seen = new Set<string>();
+
+  picked.forEach((c) => {
+    c.appointments.forEach((a) => {
+      if (a.type === "klausur") return;
+      const dt = new Date(a.start);
+      const de = new Date(a.end);
+      const di = dt.getDay(); // 0=Sun
+      if (di < 1 || di > 5) return;
+      const startH = dt.getHours();
+      const spanH = (de.getTime() - dt.getTime()) / (1000 * 60 * 60);
+      const key = `${c.id}-${di - 1}-${startH}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      grid.push({ ...c, di: di - 1, startH: startH - 8, spanH, apptType: a.type });
+    });
+  });
+
+  return (
+    <div>
+      <PageHeader title="Stundenplan" sub="Typische Woche">
+        <SegmentedControl options={SEGMENTS} active={1} onChange={(i) => navigate(SEGMENT_PATHS[i])} />
+      </PageHeader>
+      <AppleCard noPad style={{ overflow: "auto" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "48px repeat(5, 1fr)", minWidth: 650 }}>
+          <div style={{ borderBottom: "0.5px solid var(--separator)" }} />
+          {DAYS.map((d, i) => (
+            <div
+              key={i}
+              style={{
+                padding: "10px 0",
+                textAlign: "center",
+                fontSize: 12,
+                fontWeight: 600,
+                color: "var(--label-secondary)",
+                borderBottom: "0.5px solid var(--separator)",
+                borderLeft: "0.5px solid var(--separator)"
+              }}
+            >
+              {d}
+            </div>
+          ))}
+          {HOURS.map((h, hi) => (
+            <Fragment key={hi}>
+              <div
+                style={{
+                  height: ROW_H,
+                  display: "flex",
+                  alignItems: "flex-start",
+                  justifyContent: "flex-end",
+                  padding: "2px 6px 0 0",
+                  fontSize: 10,
+                  fontFamily: "var(--font-mono)",
+                  color: "var(--label-tertiary)",
+                  borderTop: "0.5px solid var(--separator)"
+                }}
+              >
+                {h}:00
+              </div>
+              {DAYS.map((_, di) => {
+                const ev = grid.filter((e) => e.di === di && e.startH === hi);
+                return (
+                  <div
+                    key={di}
+                    style={{
+                      position: "relative",
+                      height: ROW_H,
+                      borderTop: "0.5px solid var(--separator)",
+                      borderLeft: "0.5px solid var(--separator)"
+                    }}
+                  >
+                    {ev.map((e, i) => (
+                      <div
+                        key={i}
+                        style={{
+                          position: "absolute",
+                          top: 2,
+                          left: ev.length > 1 ? `${(i / ev.length) * 100}%` : 2,
+                          right: ev.length > 1 ? `${((ev.length - i - 1) / ev.length) * 100}%` : 2,
+                          height: e.spanH * ROW_H - 4,
+                          zIndex: 2,
+                          marginLeft: ev.length > 1 ? 1 : 0,
+                          marginRight: ev.length > 1 ? 1 : 0
+                        }}
+                      >
+                        <EventChip title={e.name} sub={TYPE_SHORT[e.apptType]} color={e.color} tall />
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+            </Fragment>
+          ))}
+        </div>
+      </AppleCard>
+    </div>
+  );
+}

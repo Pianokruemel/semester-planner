@@ -1,195 +1,45 @@
-import { useEffect, useState } from "react";
-import { NavLink, Route, Routes, useNavigate } from "react-router-dom";
-import { CatalogStudyProgram, fetchCatalogProgrammes } from "./api/catalog";
-import { defaultSettings, Settings } from "./api/types";
-import { useSettings, useUpdateSettings } from "./hooks/useSettings";
-import { CalendarPage } from "./pages/CalendarPage";
-import { CatalogPage } from "./pages/CatalogPage";
-import { CategoriesPage } from "./pages/CategoriesPage";
-import { CourseFormPage } from "./pages/CourseFormPage";
-import { ExamsPage } from "./pages/ExamsPage";
-import { usePlannerStore } from "./planner/store";
+import { Navigate, Route, Routes } from "react-router-dom";
+import { usePlan } from "./app/PlanProvider";
+import { OnboardingFlow } from "./onboarding/OnboardingFlow";
+import { Shell } from "./shell/Shell";
+import { SemesterOverview } from "./screens/SemesterOverview";
+import { TimetableView } from "./screens/TimetableView";
+import { ConflictsView } from "./screens/ConflictsView";
+import { CourseDetailView } from "./screens/CourseDetailView";
 
-function App() {
-  const navigate = useNavigate();
-  const { data: settings } = useSettings();
-  const updateSettings = useUpdateSettings();
-  const { hasCurrentPlanner, isLoadingPlan, preferredStudyProgramKey, startNewPlanner, setPreferredStudyProgram } = usePlannerStore();
-  const mergedSettings = settings ?? defaultSettings;
-  const [entryError, setEntryError] = useState("");
-  const [isCreatingPlan, setIsCreatingPlan] = useState(false);
-  const [programmes, setProgrammes] = useState<CatalogStudyProgram[]>([]);
-  const [selectedProgramKey, setSelectedProgramKey] = useState("");
+export default function App() {
+  const { plan, isLoading } = usePlan();
 
-  useEffect(() => {
-    void fetchCatalogProgrammes()
-      .then((items) => {
-        setProgrammes(items);
-        setSelectedProgramKey((current) => preferredStudyProgramKey || current || items[0]?.program_key || "");
-      })
-      .catch(() => setProgrammes([]));
-  }, [preferredStudyProgramKey]);
-
-  useEffect(() => {
-    document.documentElement.classList.toggle("dark", mergedSettings.dark_mode);
-  }, [mergedSettings.dark_mode]);
-
-  function saveSettings(next: Partial<Settings>) {
-    updateSettings.mutate(next);
-  }
-
-  function toggleTheme() {
-    saveSettings({ dark_mode: !mergedSettings.dark_mode });
-  }
-
-  async function handleNewPlanner() {
-    setEntryError("");
-    if (!selectedProgramKey) {
-      setEntryError("Bitte zuerst einen Studiengang auswählen.");
-      return;
-    }
-    setIsCreatingPlan(true);
-
-    try {
-      await startNewPlanner(selectedProgramKey);
-      navigate("/");
-    } catch (error) {
-      setEntryError(error instanceof Error ? error.message : "Plan konnte nicht erstellt werden.");
-    } finally {
-      setIsCreatingPlan(false);
-    }
-  }
-
-  async function handleSelectStudyProgram() {
-    setEntryError("");
-    if (!selectedProgramKey) {
-      setEntryError("Bitte zuerst einen Studiengang auswählen.");
-      return;
-    }
-
-    try {
-      await setPreferredStudyProgram(selectedProgramKey);
-    } catch (error) {
-      setEntryError(error instanceof Error ? error.message : "Studiengang konnte nicht gespeichert werden.");
-    }
-  }
-
-  if (isLoadingPlan) {
+  if (isLoading && !plan) {
     return (
-      <div className="app-shell">
-        <section className="page-card entry-hero">
-          <h1>Stundenplan wird geladen</h1>
-          <p className="page-intro">Bitte warten.</p>
-        </section>
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "grid",
+          placeItems: "center",
+          background: "var(--bg-grouped)",
+          color: "var(--label-secondary)",
+          fontSize: 15
+        }}
+      >
+        Lade Plan…
       </div>
     );
   }
 
-  if (!hasCurrentPlanner || !preferredStudyProgramKey) {
-    return (
-      <div className="app-shell">
-        <section className="page-card entry-hero">
-          <span className="entry-kicker">Anonym planen</span>
-          <h1>Wähle deinen Studiengang</h1>
-          <p className="page-intro">
-            CP und Kategorien werden aus dem Modulhandbuch deines Studiengangs übernommen. Fehlende Angaben fragst du
-            beim Hinzufügen eines Kurses nach.
-          </p>
-          <label className="entry-field full-width">
-            Studiengang
-            <select value={selectedProgramKey} onChange={(event) => setSelectedProgramKey(event.target.value)}>
-              <option value="">Bitte wählen</option>
-              {programmes.map((program) => (
-                <option key={program.program_key} value={program.program_key}>
-                  {program.program_label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="entry-actions">
-            {hasCurrentPlanner ? (
-              <button type="button" className="primary-btn" onClick={() => void handleSelectStudyProgram()}>
-                Studiengang speichern
-              </button>
-            ) : (
-              <button type="button" className="primary-btn" onClick={() => void handleNewPlanner()} disabled={isCreatingPlan}>
-                {isCreatingPlan ? "Erstelle..." : "Neue Planung"}
-              </button>
-            )}
-          </div>
-          {entryError ? <p className="error-text">{entryError}</p> : null}
-
-          <div className="entry-utility-row">
-            <p>Darstellung und Filter bleiben auf diesem Gerät.</p>
-            <button type="button" className="utility-btn" onClick={toggleTheme}>
-              {mergedSettings.dark_mode ? "Hell" : "Dunkel"}
-            </button>
-          </div>
-
-          <div className="entry-notes">
-            <article className="entry-note">
-              <strong>Plan-ID lokal</strong>
-              <p>Die aktuelle anonyme Plan-ID liegt im Browser und öffnet diese Planung wieder.</p>
-            </article>
-            <article className="entry-note">
-              <strong>Öffentlicher Katalog</strong>
-              <p>Der Scanner lädt öffentliche Vorlesungsdaten aus TUCaN in den Katalog.</p>
-            </article>
-            <article className="entry-note">
-              <strong>Teilen folgt später</strong>
-              <p>Öffentliches Teilen ist in dieser Version bewusst nicht enthalten.</p>
-            </article>
-          </div>
-        </section>
-      </div>
-    );
+  if (!plan) {
+    return <OnboardingFlow />;
   }
 
   return (
-    <div className="app-shell">
-      <header className="topbar">
-        <div className="brand-group">
-          <h1 className="brand-wordmark" aria-label="Semesti Plani">
-            <span aria-hidden="true">Semesti</span>
-            <span className="brand-logo-wrap" aria-hidden="true">
-              <img className="brand-logo brand-logo-light" src="/brand/semesti-p-light.png" alt="" />
-              <img className="brand-logo brand-logo-dark" src="/brand/semesti-p-dark.png" alt="" />
-            </span>
-            <span aria-hidden="true">lani</span>
-          </h1>
-        </div>
-        <nav>
-          <NavLink to="/">Kalender</NavLink>
-          <NavLink to="/catalog">Katalog</NavLink>
-          <NavLink to="/courses/new">Neuer Kurs</NavLink>
-          <NavLink to="/categories">Kategorien</NavLink>
-        </nav>
-        <div className="topbar-controls">
-          <div className="planner-status-chip">PostgreSQL</div>
-          <div className="topbar-utilities">
-            <button type="button" className="utility-btn" onClick={toggleTheme}>
-              {mergedSettings.dark_mode ? "Hell" : "Dunkel"}
-            </button>
-          </div>
-          <div className="topbar-actions">
-            <button type="button" onClick={() => void handleNewPlanner()} disabled={isCreatingPlan}>
-              Neue Planung
-            </button>
-          </div>
-        </div>
-      </header>
-      <main className="app-main">
-        <Routes>
-          <Route path="/" element={<CalendarPage showFullName={mergedSettings.show_full_name} />} />
-          <Route path="/catalog" element={<CatalogPage />} />
-          <Route path="/exams" element={<ExamsPage />} />
-          <Route path="/courses/new" element={<CourseFormPage mode="create" />} />
-          <Route path="/courses/:id/edit" element={<CourseFormPage mode="edit" />} />
-          <Route path="/categories" element={<CategoriesPage />} />
-        </Routes>
-      </main>
-    </div>
+    <Routes>
+      <Route element={<Shell />}>
+        <Route index element={<SemesterOverview />} />
+        <Route path="stundenplan" element={<TimetableView />} />
+        <Route path="konflikte" element={<ConflictsView />} />
+        <Route path="course/:id" element={<CourseDetailView />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Route>
+    </Routes>
   );
 }
-
-export default App;

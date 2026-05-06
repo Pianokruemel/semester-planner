@@ -2,15 +2,16 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
-import { PlannerProvider } from "./planner/store";
-import "./styles.css";
+import { PlanProvider } from "./app/PlanProvider";
+import "./styles/plani-tokens.css";
+import "./styles/shell.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <PlannerProvider>
-      <BrowserRouter>
+    <BrowserRouter>
+      <PlanProvider>
         <App />
-      </BrowserRouter>
-    </PlannerProvider>
+      </PlanProvider>
+    </BrowserRouter>
   </React.StrictMode>
 );
