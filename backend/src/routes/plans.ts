@@ -248,6 +248,48 @@ function selectedCatalogAppointmentData(
   };
 }
 
+async function autoLinkExamFromCatalog(
+  courseId: string,
+  catalogCourseId: string,
+  options: { overwrite: boolean }
+): Promise<void> {
+  const latestDocument = await prisma.catalogExamPlanDocument.findFirst({
+    where: { parseStatus: "parsed" },
+    orderBy: [{ semesterIndex: "desc" }, { fetchedAt: "desc" }],
+    select: { id: true }
+  });
+  if (!latestDocument) {
+    return;
+  }
+
+  const matches = await prisma.catalogExamCourseMatch.findMany({
+    where: { catalogCourseId, candidate: { documentId: latestDocument.id } },
+    include: { candidate: { select: { date: true, timeFrom: true, timeTo: true } } }
+  });
+  const onlyMatch = matches.length === 1 ? matches[0] : null;
+  if (!onlyMatch) {
+    return;
+  }
+
+  const candidate = onlyMatch.candidate;
+  if (options.overwrite) {
+    await prisma.plannedExam.upsert({
+      where: { courseId },
+      create: { courseId, date: candidate.date, timeFrom: candidate.timeFrom, timeTo: candidate.timeTo },
+      update: { date: candidate.date, timeFrom: candidate.timeFrom, timeTo: candidate.timeTo }
+    });
+    return;
+  }
+
+  const existing = await prisma.plannedExam.findUnique({ where: { courseId }, select: { id: true } });
+  if (existing) {
+    return;
+  }
+  await prisma.plannedExam.create({
+    data: { courseId, date: candidate.date, timeFrom: candidate.timeFrom, timeTo: candidate.timeTo }
+  });
+}
+
 async function fetchPlan(planId: string) {
   const plan = await prisma.plan.findUnique({
     where: { id: planId },
@@ -738,6 +780,8 @@ plansRouter.post("/:planId/courses/import-catalog", async (req, res) => {
     }
   });
 
+  await autoLinkExamFromCatalog(plannedCourse.id, catalogCourse.id, { overwrite: true });
+
   res.status(201).json({
     plan: serializePlan(await fetchPlan(planId)),
     course_id: plannedCourse.id
@@ -792,6 +836,8 @@ plansRouter.post("/:planId/courses/:courseId/refresh-catalog", async (req, res) 
       }
     });
   });
+
+  await autoLinkExamFromCatalog(courseId, catalogCourse.id, { overwrite: false });
 
   res.json(serializePlan(await fetchPlan(planId)));
 });

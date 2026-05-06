@@ -34,7 +34,12 @@ type PlanContextValue = {
   removeCourse: (courseId: string) => Promise<void>;
   addCatalogCourse: (
     catalogCourseId: string,
-    options?: { categoryId?: string | null; cpOverride?: number; colorTag?: CourseColorTag | null }
+    options?: {
+      categoryId?: string | null;
+      cpOverride?: number;
+      colorTag?: CourseColorTag | null;
+      selectedSubgroupKey?: string | null;
+    }
   ) => Promise<string>;
   refresh: () => Promise<void>;
 };
@@ -196,14 +201,20 @@ export function PlanProvider({ children }: { children: ReactNode }) {
   const addCatalogCourse = useCallback(
     async (
       catalogCourseId: string,
-      options?: { categoryId?: string | null; cpOverride?: number; colorTag?: CourseColorTag | null }
+      options?: {
+        categoryId?: string | null;
+        cpOverride?: number;
+        colorTag?: CourseColorTag | null;
+        selectedSubgroupKey?: string | null;
+      }
     ): Promise<string> => {
       if (!planId) throw new Error("Kein Plan geladen.");
       const result = await importCatalogCourse(planId, {
         catalog_course_id: catalogCourseId,
         category_id: options?.categoryId ?? null,
         cp_override: options?.cpOverride,
-        color_tag: options?.colorTag ?? null
+        color_tag: options?.colorTag ?? null,
+        selected_subgroup_key: options?.selectedSubgroupKey ?? null
       });
       setPlan(result.plan);
       return result.course_id;

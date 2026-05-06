@@ -116,6 +116,56 @@ export async function fetchCatalogCourse(id: string): Promise<CatalogCourseDetai
   return response.data;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function extractSmallGroups(detailsJson: unknown): CatalogSmallGroup[] {
+  if (!isRecord(detailsJson) || !Array.isArray(detailsJson.small_groups)) return [];
+  return detailsJson.small_groups.flatMap((entry): CatalogSmallGroup[] => {
+    if (!isRecord(entry) || typeof entry.title !== "string") return [];
+    const key = typeof entry.key === "string" && entry.key.trim() ? entry.key.trim() : entry.title;
+    const instructors = Array.isArray(entry.instructors)
+      ? entry.instructors.filter((v): v is string => typeof v === "string")
+      : [];
+    const schedule = typeof entry.schedule === "string" ? entry.schedule : "";
+    const appointments = Array.isArray(entry.appointments)
+      ? entry.appointments.flatMap((a): CatalogSmallGroupAppointment[] => {
+          if (
+            !isRecord(a) ||
+            typeof a.date !== "string" ||
+            typeof a.time_from !== "string" ||
+            typeof a.time_to !== "string" ||
+            typeof a.room !== "string"
+          )
+            return [];
+          return [
+            {
+              date: a.date,
+              time_from: a.time_from,
+              time_to: a.time_to,
+              room: a.room,
+              type: typeof a.type === "string" && a.type.trim() ? a.type : "Uebung",
+              position: typeof a.position === "number" ? a.position : undefined
+            }
+          ];
+        })
+      : [];
+    const appointmentInstructors = Array.isArray(entry.appointment_instructors)
+      ? entry.appointment_instructors.flatMap((row): Array<{ position: number; instructors: string[] }> => {
+          if (!isRecord(row) || typeof row.position !== "number" || !Array.isArray(row.instructors)) return [];
+          return [
+            {
+              position: row.position,
+              instructors: row.instructors.filter((v): v is string => typeof v === "string")
+            }
+          ];
+        })
+      : [];
+    return [{ key, title: entry.title, instructors, schedule, appointments, appointment_instructors: appointmentInstructors }];
+  });
+}
+
 export async function fetchCatalogProgrammes(): Promise<CatalogStudyProgram[]> {
   const response = await apiClient.get<CatalogStudyProgram[]>("/catalog/programmes");
   return response.data;
