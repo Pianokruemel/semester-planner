@@ -7,7 +7,7 @@
     "prelint": "npm --prefix ../packages/shared run build",
     "predev": "npm --prefix ../packages/shared run build",
     "prebuild": "npm --prefix ../packages/shared run build",
-    "test": "node -e \"console.log('No automated backend tests configured yet.')\"",
+    "test": "tsx --test src/**/*.test.ts",
     "lint": "tsc --noEmit -p tsconfig.json",
     "dev": "tsx watch src/index.ts",
     "docker:dev": "node scripts/dockerDev.js",

@@ -394,31 +394,15 @@ export async function enrichModuleHandbooks(config: ScannerConfig) {
   const documents: Parameters<typeof ingestModuleHandbooks>[2] = [];
   for (const link of links) {
     try {
-      const previous = await fetchHandbookStatus(config, link);
-      const headers: Record<string, string> = {};
-      if (previous?.etag) {
-        headers["if-none-match"] = previous.etag;
-      }
-      if (previous?.last_modified) {
-        headers["if-modified-since"] = previous.last_modified;
-      }
+      await fetchHandbookStatus(config, link);
 
       await sleep(config.rateLimitMs);
       const fetched = await withTransientRetry(
         `module_handbook_pdf ${link.pdf_url}`,
-        () => fetchBytes(link.pdf_url, headers)
+        () => fetchBytes(link.pdf_url)
       );
-      if (fetched.status === 304) {
-        console.log(`module_handbook_unchanged program="${link.program_label}" reason=not_modified`);
-        continue;
-      }
 
       const contentHash = sha256Hex(fetched.bytes);
-      if (previous?.content_hash === contentHash) {
-        console.log(`module_handbook_unchanged program="${link.program_label}" reason=same_hash`);
-        continue;
-      }
-
       const pages = await parsePdfPages(fetched.bytes);
       const courses = parseModuleHandbookPages(pages);
       documents.push({

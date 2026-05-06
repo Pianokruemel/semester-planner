@@ -8,7 +8,13 @@ import { Prisma } from "@prisma/client";
 import { Router } from "express";
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { requirementsForProgram, serializeRequirement } from "../lib/curriculum";
+import {
+  findRequirementForClassPath,
+  requirementGroupsForProgram,
+  requirementsForProgram,
+  serializeRequirement,
+  serializeRequirementGroup
+} from "../lib/curriculum";
 import { dateFromYmd } from "../lib/dates";
 import {
   findProgrammeMatchesForCourseNumber,
@@ -294,6 +300,170 @@ function examRowHash(row: ExamPlanRowInput): string {
   );
 }
 
+const IT_SECURITY_PROGRAM_KEY = "msc-it-security";
+const IT_SECURITY_OBSOLETE_CATEGORY_KEYS = ["elective-areas", "seminars-labs"];
+
+async function syncCurriculumCategoriesForPlan(tx: Prisma.TransactionClient, planId: string, programKey: string) {
+  for (const requirement of requirementsForProgram(programKey)) {
+    const existingByKey = await tx.planCategory.findFirst({
+      where: { planId, curriculumCategoryKey: requirement.key },
+      select: { id: true }
+    });
+
+    if (existingByKey) {
+      await tx.planCategory.update({
+        where: { id: existingByKey.id },
+        data: {
+          name: requirement.name,
+          color: requirement.color,
+          position: requirement.position,
+          source: "curriculum",
+          requiredCpMin: requirement.requiredCpMin,
+          requiredCpMax: requirement.requiredCpMax
+        }
+      });
+      continue;
+    }
+
+    const existingByName = await tx.planCategory.findFirst({
+      where: { planId, name: requirement.name },
+      select: { id: true }
+    });
+
+    if (existingByName) {
+      await tx.planCategory.update({
+        where: { id: existingByName.id },
+        data: {
+          color: requirement.color,
+          position: requirement.position,
+          source: "curriculum",
+          curriculumCategoryKey: requirement.key,
+          requiredCpMin: requirement.requiredCpMin,
+          requiredCpMax: requirement.requiredCpMax
+        }
+      });
+      continue;
+    }
+
+    await tx.planCategory.create({
+      data: {
+        planId,
+        name: requirement.name,
+        color: requirement.color,
+        position: requirement.position,
+        source: "curriculum",
+        curriculumCategoryKey: requirement.key,
+        requiredCpMin: requirement.requiredCpMin,
+        requiredCpMax: requirement.requiredCpMax
+      }
+    });
+  }
+}
+
+async function findItSecurityHandbookMatch(tx: Prisma.TransactionClient, courseNumber: string | null) {
+  const normalized = normalizeBaseCourseNumber(courseNumber);
+  if (!normalized) {
+    return null;
+  }
+
+  const matches = await tx.moduleHandbookCourse.findMany({
+    where: {
+      programKey: IT_SECURITY_PROGRAM_KEY,
+      OR: [{ normalizedCourseNumber: normalized }, { moduleNumber: normalized }]
+    },
+    orderBy: [{ poLabel: "desc" }, { normalizedCourseNumber: "asc" }]
+  });
+
+  return (
+    matches.find((entry) => entry.normalizedCourseNumber === normalized) ??
+    matches.find((entry) => entry.moduleNumber === normalized) ??
+    null
+  );
+}
+
+async function backfillItSecurityPlanCategories(documents: z.infer<typeof moduleHandbookDocumentSchema>[]) {
+  if (!documents.some((document) => document.program_key === IT_SECURITY_PROGRAM_KEY && document.parse_status === "parsed")) {
+    return { plans_seen: 0, courses_reclassified: 0, obsolete_categories_deleted: 0 };
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const plans = await tx.plan.findMany({
+      where: { preferredStudyProgramKey: IT_SECURITY_PROGRAM_KEY },
+      include: {
+        categories: true,
+        courses: {
+          include: { category: true }
+        }
+      }
+    });
+
+    let coursesReclassified = 0;
+    let obsoleteCategoriesDeleted = 0;
+
+    for (const plan of plans) {
+      await syncCurriculumCategoriesForPlan(tx, plan.id, IT_SECURITY_PROGRAM_KEY);
+
+      const categories = await tx.planCategory.findMany({ where: { planId: plan.id } });
+      const categoryByKey = new Map(
+        categories.flatMap((category) => (category.curriculumCategoryKey ? [[category.curriculumCategoryKey, category]] : []))
+      );
+
+      for (const course of plan.courses) {
+        const currentKey = course.category?.curriculumCategoryKey ?? null;
+        const mayReclassify =
+          !course.categoryId ||
+          (course.category?.source === "curriculum" && currentKey !== null && IT_SECURITY_OBSOLETE_CATEGORY_KEYS.includes(currentKey));
+        if (!mayReclassify) {
+          continue;
+        }
+
+        const handbookMatch = await findItSecurityHandbookMatch(tx, course.courseNumber);
+        const requirement = findRequirementForClassPath(IT_SECURITY_PROGRAM_KEY, handbookMatch?.classPath);
+        const targetCategory = requirement ? categoryByKey.get(requirement.key) : null;
+        if (!handbookMatch || !requirement || !targetCategory) {
+          continue;
+        }
+
+        await tx.plannedCourse.update({
+          where: { id: course.id },
+          data: {
+            categoryId: targetCategory.id,
+            catalogProgramKey: IT_SECURITY_PROGRAM_KEY,
+            catalogProgramLabel: "M.Sc. IT Security",
+            catalogProgramPoLabel: handbookMatch.poLabel,
+            catalogProgramClassPath: handbookMatch.classPath,
+            catalogProgramModuleNumber: handbookMatch.moduleNumber,
+            catalogProgramModuleTitle: handbookMatch.moduleTitle
+          }
+        });
+        coursesReclassified += 1;
+      }
+
+      const obsoleteCategories = await tx.planCategory.findMany({
+        where: {
+          planId: plan.id,
+          source: "curriculum",
+          curriculumCategoryKey: { in: IT_SECURITY_OBSOLETE_CATEGORY_KEYS }
+        },
+        select: { id: true }
+      });
+      for (const category of obsoleteCategories) {
+        const courseCount = await tx.plannedCourse.count({ where: { categoryId: category.id } });
+        if (courseCount === 0) {
+          await tx.planCategory.delete({ where: { id: category.id } });
+          obsoleteCategoriesDeleted += 1;
+        }
+      }
+    }
+
+    return {
+      plans_seen: plans.length,
+      courses_reclassified: coursesReclassified,
+      obsolete_categories_deleted: obsoleteCategoriesDeleted
+    };
+  });
+}
+
 export const catalogRouter = Router();
 
 catalogRouter.get("/health", async (_req, res) => {
@@ -382,6 +552,7 @@ catalogRouter.get("/programmes", async (_req, res) => {
       program_label: program.label,
       page_url: program.pageUrl,
       curriculum_categories: requirementsForProgram(program.key).map(serializeRequirement),
+      curriculum_requirement_groups: requirementGroupsForProgram(program.key).map(serializeRequirementGroup),
       latest_document: program.documents[0]
         ? {
             po_label: program.documents[0].poLabel,
@@ -584,7 +755,8 @@ catalogRouter.post("/internal/module-handbooks", async (req, res) => {
     return { programmes_seen: payload.programmes.length, documents_seen: documentsSeen, courses_replaced: coursesReplaced };
   });
 
-  res.json(result);
+  const backfill = await backfillItSecurityPlanCategories(payload.documents);
+  res.json({ ...result, backfill });
 });
 
 catalogRouter.get("/internal/exam-plans/status", async (req, res) => {

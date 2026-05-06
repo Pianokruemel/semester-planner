@@ -212,34 +212,101 @@ function baseCourseNumber(value: string | null): string | null {
 
 function extractCp(lines: string[], startIndex: number, endIndex: number): number | null {
   const windowText = lines.slice(startIndex, Math.min(endIndex, startIndex + 24)).join(" ");
-  const labelMatch = windowText.match(/(?:Leistungspunkte|Credit Points?|Credits?|CP)\D{0,40}(\d+(?:[,.]\d+)?)/i);
+  const labelMatch = windowText.match(/(?:Leistungspunkte|Credit Points?|Credits?)\D{0,40}(\d+(?:[,.]\d+)?)/i);
   if (labelMatch) {
     return Math.round(Number(labelMatch[1]!.replace(",", ".")));
+  }
+
+  const cpPrefixMatch = windowText.match(/\bCP\s*[:=]?\s*(\d+(?:[,.]\d+)?)\b/i);
+  if (cpPrefixMatch) {
+    return Math.round(Number(cpPrefixMatch[1]!.replace(",", ".")));
   }
 
   const shortMatch = windowText.match(/\b(\d+(?:[,.]\d+)?)\s*(?:CP|Credit Points?|Leistungspunkte)\b/i);
   return shortMatch ? Math.round(Number(shortMatch[1]!.replace(",", "."))) : null;
 }
 
-function headingPathFromLine(line: string, currentPath: string[]): string[] {
+function isModuleFieldLine(line: string): boolean {
   const normalized = normalizeWhitespace(line);
-  if (!normalized || normalized.length > 120) {
-    return currentPath;
+  return /^(Modul|Module|Veranstaltung|Course|Leistungspunkte|Credit|Arbeitsaufwand|Selbststudium|Moduldauer|Angebotsturnus|Sprache|SWS|Kurs|Kursname|Nr\.?)\b/i.test(
+    normalized
+  );
+}
+
+function isHandbookChromeLine(line: string): boolean {
+  return /^Modulhandbuch\b|^M\.\s*Sc\.|^B\.\s*Sc\.|^Technische Universität|^Fachbereich Informatik$/i.test(line);
+}
+
+function isStudyRelatedSubheading(line: string): boolean {
+  return /^(Praktika(?:,?\s*Projektpraktika)?|Seminare|Praktikum in der Lehre)\b/i.test(line);
+}
+
+function isStandaloneSectionHeading(line: string): boolean {
+  return /^(Pflichtbereich|Wahlpflichtbereich|Vertiefung|Anwendungsfach|Mandatory|Elective|Area|Bereich|Katalog|Catalog|Masterarbeit|Master Thesis|General Education|Studium Generale)\b/i.test(
+    line
+  );
+}
+
+function cleanHeadingLine(line: string): string {
+  return normalizeWhitespace(line)
+    .replace(/,$/, "")
+    .replace(/\s+Veranstaltungen$/i, " Veranstaltungen");
+}
+
+function headingPathFromLines(lines: string[], index: number, currentPath: string[]): { path: string[]; index: number } {
+  const normalized = cleanHeadingLine(lines[index] ?? "");
+  if (!normalized || normalized.length > 120 || isModuleFieldLine(normalized) || isHandbookChromeLine(normalized)) {
+    return { path: currentPath, index };
   }
 
-  if (/^(Modul|Module|Veranstaltung|Course|Leistungspunkte|Credit)/i.test(normalized)) {
-    return currentPath;
+  const next = cleanHeadingLine(lines[index + 1] ?? "");
+  const nextAfter = cleanHeadingLine(lines[index + 2] ?? "");
+
+  if (/^Wahlbereiche$/i.test(normalized)) {
+    return { path: currentPath, index };
   }
 
-  if (/(Pflicht|Wahlpflicht|Vertiefung|Anwendungsfach|Mandatory|Elective|Area|Bereich|Katalog|Catalog)/i.test(normalized)) {
-    return [normalized];
+  if (/^Wahlbereich$/i.test(normalized) && next && !isModuleFieldLine(next)) {
+    return { path: [`Wahlbereich ${next}`], index: index + 1 };
   }
 
-  const numbered = normalized.match(/^\d+(?:\.\d+)*\s+(.{4,})$/);
-  return numbered && !/\b\d{2}-\d{2}-\d{4}\b/.test(normalized) ? [normalized] : currentPath;
+  if (/^Wahlbereich Studienbegleitende Leistungen$/i.test(normalized)) {
+    if (next && isStudyRelatedSubheading(next)) {
+      const subheading = /^(Praktika|Praktika,?\s*Projektpraktika)/i.test(next) && nextAfter === "Veranstaltungen"
+        ? `${next} Veranstaltungen`
+        : next;
+      return { path: [normalized, subheading], index: subheading === next ? index + 1 : index + 2 };
+    }
+
+    return { path: [normalized], index };
+  }
+
+  if (/^Praktika,?\s*Projektpraktika und ähnliche$/i.test(normalized) && next === "Veranstaltungen") {
+    return { path: ["Wahlbereich Studienbegleitende Leistungen", `${normalized} Veranstaltungen`], index: index + 1 };
+  }
+
+  if (isStudyRelatedSubheading(normalized)) {
+    const prefix = currentPath[0] === "Wahlbereich Studienbegleitende Leistungen" ? currentPath[0] : "Wahlbereich Studienbegleitende Leistungen";
+    return { path: [prefix, normalized], index };
+  }
+
+  if (isStandaloneSectionHeading(normalized)) {
+    return { path: [normalized], index };
+  }
+
+  return { path: currentPath, index };
 }
 
 function titleFromLines(lines: string[], index: number, moduleNumber: string): string {
+  for (let titleIndex = Math.max(0, index - 8); titleIndex < index; titleIndex += 1) {
+    if (/^Modulname$/i.test(lines[titleIndex] ?? "")) {
+      const title = normalizeWhitespace(lines[titleIndex + 1] ?? "");
+      if (title && !/\b\d{2}-\d{2}-\d{4}\b/.test(title) && !isModuleFieldLine(title)) {
+        return title;
+      }
+    }
+  }
+
   const sameLine = lines[index]?.replace(moduleNumber, "").replace(/^[-:\s]+/, "").trim();
   if (sameLine && !/^(Modul|Module)?nummer\b/i.test(sameLine)) {
     return sameLine;
@@ -259,6 +326,20 @@ function titleFromLines(lines: string[], index: number, moduleNumber: string): s
   return moduleNumber;
 }
 
+function looksLikeModuleStartAt(lines: string[], index: number): boolean {
+  const line = lines[index] ?? "";
+  if (/\b(Modul|Module)?nummer\b/i.test(line) || /\bModul\s+Nr\.?\b/i.test(line)) {
+    return true;
+  }
+
+  if (!/^\d{2}-\d{2}-\d{4}\b(?!-)/.test(line)) {
+    return false;
+  }
+
+  const context = lines.slice(Math.max(0, index - 4), index).join(" ");
+  return !/\b(Modul\s+Nr\.?|Modulnummer|Kurse des Moduls|Kurs|Course|Veranstaltung|Veranstaltungen)\b/i.test(context);
+}
+
 export function parseModuleHandbookPages(pages: ParsedPdfPage[]): ParsedModuleHandbookCourse[] {
   const entries: ParsedModuleHandbookCourse[] = [];
   let classPath: string[] = [];
@@ -271,12 +352,12 @@ export function parseModuleHandbookPages(pages: ParsedPdfPage[]): ParsedModuleHa
 
     for (let index = 0; index < lines.length; index += 1) {
       const line = lines[index]!;
-      classPath = headingPathFromLine(line, classPath);
+      const heading = headingPathFromLines(lines, index, classPath);
+      classPath = heading.path;
+      index = heading.index;
 
       const candidateBlock = lines.slice(index, index + 3).join(" ");
-      const looksLikeModuleStart =
-        /\b(Modul|Module)?nummer\b/i.test(line) || /^\d{2}-\d{2}-\d{4}\b/.test(line);
-      if (!looksLikeModuleStart) {
+      if (!looksLikeModuleStartAt(lines, index)) {
         continue;
       }
 
@@ -291,7 +372,7 @@ export function parseModuleHandbookPages(pages: ParsedPdfPage[]): ParsedModuleHa
       }
 
       const nextModuleIndex = lines.findIndex((candidate, candidateIndex) => {
-        return candidateIndex > index && /\b(Modul|Module)?nummer\b/i.test(candidate) && /\b\d{2}-\d{2}-\d{4}\b/.test(candidate);
+        return candidateIndex > index && looksLikeModuleStartAt(lines, candidateIndex);
       });
       const endIndex = nextModuleIndex > index ? nextModuleIndex : lines.length;
       const block = lines.slice(index, endIndex);

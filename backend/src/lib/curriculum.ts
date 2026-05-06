@@ -8,9 +8,19 @@ export type CurriculumRequirement = {
   aliases: string[];
 };
 
+export type CurriculumRequirementGroup = {
+  key: string;
+  name: string;
+  requiredCpMin: number | null;
+  requiredCpMax: number | null;
+  position: number;
+  categoryKeys: string[];
+};
+
 export type CurriculumProgram = {
   programKey: string;
   requirements: CurriculumRequirement[];
+  requirementGroups?: CurriculumRequirementGroup[];
 };
 
 const pastelPalette = ["#A7F3D0", "#BFDBFE", "#FDE68A", "#FBCFE8", "#DDD6FE", "#FED7AA", "#BAE6FD", "#C7D2FE"];
@@ -147,25 +157,48 @@ export const CURRICULUM_REQUIREMENTS: CurriculumProgram[] = [
   {
     programKey: "msc-it-security",
     requirements: [
-      requirement("elective-areas", "Elective Areas", 59, 76, 0, [
-        "elective areas",
-        "cryptography",
-        "foundations",
-        "system security",
-        "systems and communication security",
-        "software security",
-        "application security",
+      requirement("cryptography-foundations", "Cryptography and Foundations", null, null, 0, [
+        "wahlbereich cryptography and foundations",
+        "cryptography and foundations"
+      ]),
+      requirement("systems-communication-security", "Systems and Communication Security", null, null, 1, [
+        "wahlbereich systems and communication security",
+        "systems and communication security"
+      ]),
+      requirement("software-application-security", "Software and Application Security", null, null, 2, [
+        "wahlbereich software and application security",
+        "software and application security"
+      ]),
+      requirement("complementary-topics", "Complementary Topics", null, null, 3, [
+        "wahlbereich complementary topics",
         "complementary topics"
       ]),
-      requirement("seminars-labs", "Seminars, Labs and Practical Labs", 9, 15, 1, [
-        "seminars",
-        "labs",
+      requirement("practical-labs", "Praktika", null, null, 4, [
+        "praktika projektpraktika und ahnliche veranstaltungen",
+        "praktika projektpraktika und aehnliche veranstaltungen",
         "practical labs",
-        "seminare",
-        "praktika"
+        "project practicals"
       ]),
-      requirement("general-education", "General Education", 5, 6, 2, ["general education", "studium generale"]),
-      requirement("master-thesis", "Master Thesis", 30, 30, 3, ["master thesis", "masterarbeit", "thesis"])
+      requirement("seminars", "Seminare", null, null, 5, ["seminare", "seminars"]),
+      requirement("teaching-internship", "Praktikum in der Lehre", null, null, 6, [
+        "praktikum in der lehre",
+        "teaching internship"
+      ]),
+      requirement("general-education", "General Education", 5, 6, 7, ["general education", "studium generale"]),
+      requirement("master-thesis", "Master Thesis", 30, 30, 8, ["master thesis", "masterarbeit", "thesis"])
+    ],
+    requirementGroups: [
+      requirementGroup("elective-areas", "Elective Areas", 59, 76, 0, [
+        "cryptography-foundations",
+        "systems-communication-security",
+        "software-application-security",
+        "complementary-topics"
+      ]),
+      requirementGroup("study-related", "Studienbegleitende Leistungen", 9, 15, 1, [
+        "practical-labs",
+        "seminars",
+        "teaching-internship"
+      ])
     ]
   }
 ];
@@ -189,12 +222,38 @@ function requirement(
   };
 }
 
+function requirementGroup(
+  key: string,
+  name: string,
+  requiredCpMin: number | null,
+  requiredCpMax: number | null,
+  position: number,
+  categoryKeys: string[]
+): CurriculumRequirementGroup {
+  return {
+    key,
+    name,
+    requiredCpMin,
+    requiredCpMax,
+    position,
+    categoryKeys
+  };
+}
+
 export function requirementsForProgram(programKey: string | null | undefined): CurriculumRequirement[] {
   if (!programKey) {
     return [];
   }
 
   return CURRICULUM_REQUIREMENTS.find((entry) => entry.programKey === programKey)?.requirements ?? [];
+}
+
+export function requirementGroupsForProgram(programKey: string | null | undefined): CurriculumRequirementGroup[] {
+  if (!programKey) {
+    return [];
+  }
+
+  return CURRICULUM_REQUIREMENTS.find((entry) => entry.programKey === programKey)?.requirementGroups ?? [];
 }
 
 export function serializeRequirement(requirement: CurriculumRequirement) {
@@ -205,6 +264,17 @@ export function serializeRequirement(requirement: CurriculumRequirement) {
     required_cp_max: requirement.requiredCpMax,
     color: requirement.color,
     position: requirement.position
+  };
+}
+
+export function serializeRequirementGroup(group: CurriculumRequirementGroup) {
+  return {
+    group_key: group.key,
+    name: group.name,
+    required_cp_min: group.requiredCpMin,
+    required_cp_max: group.requiredCpMax,
+    position: group.position,
+    category_keys: group.categoryKeys
   };
 }
 

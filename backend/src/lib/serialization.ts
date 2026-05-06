@@ -1,5 +1,6 @@
 import { CatalogAppointment, CatalogCourse, PlanCategory, PlannedAppointment, PlannedCourse, PlannedExam, Prisma } from "@prisma/client";
 import { appointmentFingerprint, appointmentTimePlaceKey, plannedAppointmentsFromCatalog } from "./catalogSync";
+import { requirementGroupsForProgram } from "./curriculum";
 import { dateFromYmd, ymdFromDate } from "./dates";
 import { CatalogProgrammeMatch } from "./moduleHandbooks";
 
@@ -222,6 +223,9 @@ export function serializePlan(plan: PlanWithRelations) {
       courseCounts.set(course.categoryId, (courseCounts.get(course.categoryId) ?? 0) + 1);
     }
   }
+  const categoriesByKey = new Map(
+    plan.categories.flatMap((category) => (category.curriculumCategoryKey ? [[category.curriculumCategoryKey, category]] : []))
+  );
 
   return {
     id: plan.id,
@@ -234,7 +238,19 @@ export function serializePlan(plan: PlanWithRelations) {
     courses: plan.courses
       .slice()
       .sort((left, right) => left.name.localeCompare(right.name, "de"))
-      .map(serializePlannedCourse)
+      .map(serializePlannedCourse),
+    requirement_groups: requirementGroupsForProgram(plan.preferredStudyProgramKey).map((group) => ({
+      group_key: group.key,
+      name: group.name,
+      required_cp_min: group.requiredCpMin,
+      required_cp_max: group.requiredCpMax,
+      position: group.position,
+      category_keys: group.categoryKeys,
+      category_ids: group.categoryKeys.flatMap((key) => {
+        const category = categoriesByKey.get(key);
+        return category ? [category.id] : [];
+      })
+    }))
   };
 }
 

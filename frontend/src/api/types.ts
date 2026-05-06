@@ -10,6 +10,16 @@ export type SnapshotCategory = {
   required_cp_max: number | null;
 };
 
+export type SnapshotRequirementGroup = {
+  group_key: string;
+  name: string;
+  required_cp_min: number | null;
+  required_cp_max: number | null;
+  position: number;
+  category_keys: string[];
+  category_ids: string[];
+};
+
 export type SnapshotAppointment = {
   date: string;
   time_from: string;
@@ -58,6 +68,7 @@ export type PlannerSnapshot = {
   settings: Record<string, never>;
   preferred_study_program_key: string | null;
   categories: SnapshotCategory[];
+  requirement_groups: SnapshotRequirementGroup[];
   courses: SnapshotCourse[];
 };
 
@@ -197,6 +208,27 @@ function normalizeOptionalPositiveInt(input: unknown): number | null {
 
   const value = Number(input);
   return Number.isInteger(value) && value >= 0 ? value : null;
+}
+
+function normalizeStringList(input: unknown): string[] {
+  return Array.isArray(input) ? input.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0) : [];
+}
+
+function normalizeRequirementGroup(input: unknown): SnapshotRequirementGroup | null {
+  if (!isRecord(input) || typeof input.group_key !== "string" || typeof input.name !== "string") {
+    return null;
+  }
+
+  const position = Number(input.position);
+  return {
+    group_key: input.group_key.trim(),
+    name: input.name.trim(),
+    required_cp_min: normalizeOptionalPositiveInt(input.required_cp_min),
+    required_cp_max: normalizeOptionalPositiveInt(input.required_cp_max),
+    position: Number.isInteger(position) ? position : 0,
+    category_keys: normalizeStringList(input.category_keys),
+    category_ids: normalizeStringList(input.category_ids)
+  };
 }
 
 function normalizeAppointment(input: unknown, index: number): SnapshotAppointment {
@@ -348,12 +380,19 @@ export function normalizePlannerSnapshot(input: unknown): PlannerSnapshot {
   const courses = Array.isArray(source.courses)
     ? source.courses.map((course, index) => normalizeCourse(course, index, categoryIds))
     : [];
+  const requirementGroups = Array.isArray(source.requirement_groups)
+    ? source.requirement_groups.flatMap((group) => {
+        const normalized = normalizeRequirementGroup(group);
+        return normalized ? [normalized] : [];
+      })
+    : [];
 
   return {
     export_version: plannerSnapshotVersion,
     settings: {},
     preferred_study_program_key: normalizeNullableText(source.preferred_study_program_key),
     categories,
+    requirement_groups: requirementGroups,
     courses
   };
 }

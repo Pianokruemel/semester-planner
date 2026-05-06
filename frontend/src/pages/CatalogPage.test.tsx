@@ -115,6 +115,7 @@ describe("CatalogPage mobile detail sheet", () => {
         program_label: "B. Sc. Informatik",
         page_url: "https://example.test/bsc",
         curriculum_categories: [],
+        curriculum_requirement_groups: [],
         latest_document: null
       }
     ]);

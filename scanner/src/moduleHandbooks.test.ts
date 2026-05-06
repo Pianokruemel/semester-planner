@@ -140,4 +140,104 @@ describe("module handbook text parsing", () => {
       ])
     );
   });
+
+  it("parses IT Security split section headings and ignores prose inside module descriptions", () => {
+    const entries = parseModuleHandbookPages([
+      {
+        pageNumber: 24,
+        text: `
+          Modulhandbuch
+          M. Sc. IT Security
+
+          Wahlbereich
+          Systems and Communication Security
+
+          Modulbeschreibung
+          Modulname
+          Embedded System Security
+          Modul Nr.
+          20-00-0581
+          6 CP
+          Kurse des Moduls
+          20-00-0581-iv Embedded System Security
+          7
+          In dieser Veranstaltung findet eine Anrechnung von vorlesungsbegleitenden Leistungen
+          statt, die lt. §25(2) der 6. Novelle der Allgemeinen Prüfungsbestimmungen der TU
+          Darmstadt und den vom Fachbereich Informatik am 14.07.2022 beschlossenen
+          Anrechnungsregeln zu einer Notenverbesserung um bis zu 1.0 führen kann.
+
+          Modulbeschreibung
+          Modulname
+          Netzsicherheit
+          Modul Nr.
+          20-00-0512
+          6 CP
+          Kurse des Moduls
+          20-00-0512-iv Netzsicherheit
+        `
+      },
+      {
+        pageNumber: 110,
+        text: `
+          Modulhandbuch
+          M. Sc. IT Security
+
+          Wahlbereich Studienbegleitende Leistungen
+          Praktika, Projektpraktika und ähnliche
+          Veranstaltungen
+
+          Modulbeschreibung
+          Modulname
+          Hacker Contest
+          Modul Nr.
+          20-00-0114
+          6 CP
+          Kurse des Moduls
+          20-00-0114-pr Hacker Contest
+        `
+      },
+      {
+        pageNumber: 170,
+        text: `
+          Wahlbereich Studienbegleitende Leistungen
+          Seminare
+
+          Modulbeschreibung
+          Modulname
+          Aktuelle Forschungstrends der Kryptographie
+          Modul Nr.
+          20-00-1146
+          3 CP
+          Kurse des Moduls
+          20-00-1146-se Aktuelle Forschungstrends der Kryptographie
+        `
+      }
+    ]);
+
+    expect(entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          module_number: "20-00-0581",
+          course_number: "20-00-0581-iv",
+          cp: 6,
+          class_path: ["Wahlbereich Systems and Communication Security"]
+        }),
+        expect.objectContaining({
+          module_number: "20-00-0512",
+          course_number: "20-00-0512-iv",
+          class_path: ["Wahlbereich Systems and Communication Security"]
+        }),
+        expect.objectContaining({
+          module_number: "20-00-0114",
+          course_number: "20-00-0114-pr",
+          class_path: ["Wahlbereich Studienbegleitende Leistungen", "Praktika, Projektpraktika und ähnliche Veranstaltungen"]
+        }),
+        expect.objectContaining({
+          module_number: "20-00-1146",
+          course_number: "20-00-1146-se",
+          class_path: ["Wahlbereich Studienbegleitende Leistungen", "Seminare"]
+        })
+      ])
+    );
+  });
 });

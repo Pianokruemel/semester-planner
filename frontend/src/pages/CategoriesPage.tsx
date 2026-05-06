@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { CategoryInUseError, useCreateCategory, useDeleteCategory, useCategories, useUpdateCategory } from "../hooks/useCategories";
+import { usePlannerStore } from "../planner/store";
 
 function formatRequiredCp(min: number | null, max: number | null) {
   if (min == null && max == null) {
@@ -15,6 +16,7 @@ function formatRequiredCp(min: number | null, max: number | null) {
 
 export function CategoriesPage() {
   const { data: categories = [] } = useCategories();
+  const { snapshot } = usePlannerStore();
   const createCategory = useCreateCategory();
   const updateCategory = useUpdateCategory();
   const deleteCategory = useDeleteCategory();
@@ -79,6 +81,20 @@ export function CategoriesPage() {
     setColor(category.color);
   }
 
+  const requirementGroups = (snapshot?.requirement_groups ?? [])
+    .slice()
+    .sort((left, right) => left.position - right.position || left.name.localeCompare(right.name, "de"))
+    .map((group) => {
+      const categoryIds = new Set(group.category_ids);
+      return {
+        ...group,
+        earned_cp:
+          snapshot?.courses
+            .filter((course) => course.category_id && categoryIds.has(course.category_id) && course.is_active)
+            .reduce((sum, course) => sum + course.cp, 0) ?? 0
+      };
+    });
+
   return (
     <section className="page-card">
       <h2>Kategorien verwalten</h2>
@@ -107,6 +123,26 @@ export function CategoriesPage() {
       </div>
 
       {errorText ? <p className="error-text">{errorText}</p> : null}
+
+      {requirementGroups.length > 0 ? (
+        <>
+          <h3>CP-Gruppen</h3>
+          <ul className="category-list">
+            {requirementGroups.map((group) => (
+              <li key={group.group_key}>
+                <div className="category-title">
+                  <div>
+                    <strong>{group.name}</strong>
+                    <small>
+                      {group.earned_cp} / {formatRequiredCp(group.required_cp_min, group.required_cp_max)}
+                    </small>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
 
       <ul className="category-list">
         {categories.map((category) => (

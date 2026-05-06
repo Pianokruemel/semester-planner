@@ -23,6 +23,15 @@ export type CatalogCurriculumCategory = {
   position: number;
 };
 
+export type CatalogCurriculumRequirementGroup = {
+  group_key: string;
+  name: string;
+  required_cp_min: number | null;
+  required_cp_max: number | null;
+  position: number;
+  category_keys: string[];
+};
+
 export type CatalogCourseCard = {
   id: string;
   semester_key: string;
@@ -60,6 +69,7 @@ export type CatalogStudyProgram = {
   program_label: string;
   page_url: string;
   curriculum_categories: CatalogCurriculumCategory[];
+  curriculum_requirement_groups: CatalogCurriculumRequirementGroup[];
   latest_document: {
     po_label: string;
     pdf_url: string;
