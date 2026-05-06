@@ -24,7 +24,7 @@ export function SemesterOverview() {
 
   const stats = [
     { label: "Kurse", value: picked.length, max: Math.max(8, picked.length || 1) },
-    { label: "ECTS", value: totalEcts, max: Math.max(36, totalEcts || 1) },
+    { label: "CP", value: totalEcts, max: Math.max(36, totalEcts || 1) },
     {
       label: "Klausuren",
       value: picked.filter((c) => c.appointments.some((a) => a.type === "klausur")).length,
@@ -35,7 +35,7 @@ export function SemesterOverview() {
 
   return (
     <div>
-      <PageHeader title="Semesterübersicht" sub={`${picked.length} Kurse · ${totalEcts} ECTS`}>
+      <PageHeader title="Semesterübersicht" sub={`${picked.length} Kurse · ${totalEcts} CP`}>
         <SegmentedControl options={SEGMENTS} active={0} onChange={(i) => navigate(SEGMENT_PATHS[i])} />
       </PageHeader>
 

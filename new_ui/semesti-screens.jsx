@@ -310,7 +310,7 @@ function AddCourseModal({ visible, onClose, onAdd, onRemove, visibleIds, selecte
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 14, fontWeight: 600 }}>{c.name}</div>
                   <div style={{ fontSize: 12, color: "var(--label-secondary)", marginTop: 1 }}>
-                    {c.prof} · {c.ects} ECTS{examAppt ? ` · Klausur ${fmtDate(examAppt.start)}` : ""}
+                    {c.prof} · {c.ects} CP{examAppt ? ` · Klausur ${fmtDate(examAppt.start)}` : ""}
                   </div>
                 </div>
                 {inPlan ? (
@@ -348,7 +348,7 @@ function SemesterOverview({ selected, setSelected, onCourseDetail, visibleCourse
 
   return (
     <div>
-      <PageHeader title="SS 2026" sub={`${picked.length} Kurse · ${totalEcts} ECTS`}>
+      <PageHeader title="SS 2026" sub={`${picked.length} Kurse · ${totalEcts} CP`}>
         <SegmentedControl options={["Übersicht","Stundenplan","Konflikte"]} active={0} />
       </PageHeader>
 
@@ -356,7 +356,7 @@ function SemesterOverview({ selected, setSelected, onCourseDetail, visibleCourse
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
         {[
           { label: "Kurse", value: picked.length, max: 8 },
-          { label: "ECTS", value: totalEcts, max: 36 },
+          { label: "CP", value: totalEcts, max: 36 },
           { label: "Klausuren", value: picked.filter(c => c.appointments.some(a => a.type === "klausur")).length, max: 8 },
           { label: "Konflikte", value: totalClashPairs, max: picked.length, warn: true },
         ].map((s, i) => (
@@ -704,7 +704,7 @@ function CourseDetailView({ courseId, selected, setSelected, onBack }) {
             <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", marginBottom: 4 }}>{c.name}</div>
             <div style={{ fontSize: 14, color: "var(--label-secondary)" }}>{c.prof}</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-              <AppleBadge color={c.color} bg={`color-mix(in srgb, ${c.color} 14%, transparent)`}>{c.ects} ECTS</AppleBadge>
+              <AppleBadge color={c.color} bg={`color-mix(in srgb, ${c.color} 14%, transparent)`}>{c.ects} CP</AppleBadge>
               <AppleBadge color="var(--label-secondary)" bg="var(--fill-quaternary)">{vls.length} VL · {ubs.length} ÜB</AppleBadge>
             </div>
           </div>

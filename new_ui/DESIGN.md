@@ -114,7 +114,7 @@ Eight pastel colors for tagging courses. Rendered as tinted dots or low-opacity 
 | Callout | 16px | Regular (400) | Secondary body |
 | Subhead | 15px | Regular (400) | Subtitles, dates |
 | Footnote | 13px | Regular (400) | Supporting text |
-| Caption 1 | 12px | Regular (400) | Timestamps, ECTS |
+| Caption 1 | 12px | Regular (400) | Timestamps, CP |
 | Caption 2 | 11px | Regular (400) | Eyebrows, badges |
 
 ### Weights

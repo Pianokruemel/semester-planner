@@ -134,7 +134,7 @@ export function CourseDetailView() {
             </div>
             {c.prof && <div style={{ fontSize: 14, color: "var(--label-secondary)" }}>{c.prof}</div>}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-              <AppleBadge color={c.color}>{c.ects} ECTS</AppleBadge>
+              <AppleBadge color={c.color}>{c.ects} CP</AppleBadge>
               <AppleBadge color="var(--label-secondary)" bg="var(--fill-quaternary)">
                 {vls.length} VL · {ubs.length} ÜB
               </AppleBadge>
