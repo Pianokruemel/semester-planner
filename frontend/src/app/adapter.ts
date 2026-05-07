@@ -1,4 +1,4 @@
-import type { SnapshotCourse } from "../api/types";
+import type { CourseColorTag, SnapshotCourse } from "../api/types";
 
 export type UIAppointmentType = "vl" | "ub" | "klausur";
 
@@ -12,14 +12,16 @@ export type UIAppointment = {
 export type UICourse = {
   id: string;
   name: string;
+  abbreviation: string;
   ects: number;
   prof: string;
   color: string;
+  colorTag: CourseColorTag;
   isActive: boolean;
   appointments: UIAppointment[];
 };
 
-const CHIP_FALLBACK = "chip-1";
+const CHIP_FALLBACK: CourseColorTag = "chip-1";
 
 export function toUICourse(c: SnapshotCourse): UICourse {
   const flat: UIAppointment[] = c.appointments.map((a) => ({
@@ -35,12 +37,15 @@ export function toUICourse(c: SnapshotCourse): UICourse {
       end: `${c.exam.date}T${c.exam.time_to}`
     });
   }
+  const colorTag: CourseColorTag = c.color_tag ?? CHIP_FALLBACK;
   return {
     id: c.id,
     name: c.name,
+    abbreviation: c.abbreviation,
     ects: c.cp,
     prof: c.instructor ?? "",
-    color: `var(--${c.color_tag ?? CHIP_FALLBACK})`,
+    color: `var(--${colorTag})`,
+    colorTag,
     isActive: c.is_active,
     appointments: flat
   };

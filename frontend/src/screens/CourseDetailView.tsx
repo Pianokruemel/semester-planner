@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { AppleBadge } from "../components/AppleBadge";
 import { AppleBtn } from "../components/AppleBtn";
@@ -13,14 +14,38 @@ import {
 } from "../lib/conflicts";
 import { DAYS_DE, fmtDate, fmtDay, fmtTime } from "../lib/formatDate";
 import type { UIAppointment } from "../app/adapter";
+import type { CourseColorTag } from "../api/types";
+
+const COLOR_TAGS: CourseColorTag[] = [
+  "chip-1",
+  "chip-2",
+  "chip-3",
+  "chip-4",
+  "chip-5",
+  "chip-6",
+  "chip-7",
+  "chip-8"
+];
 
 export function CourseDetailView() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { uiCourses, toggleCourseActive } = usePlan();
+  const { uiCourses, toggleCourseActive, removeCourse, updateCourseDetails } = usePlan();
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+  const [editing, setEditing] = useState(false);
+  const [abbrDraft, setAbbrDraft] = useState("");
+  const [colorDraft, setColorDraft] = useState<CourseColorTag>("chip-1");
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const c = uiCourses.find((x) => x.id === id);
+  useEffect(() => {
+    if (c && !editing) {
+      setAbbrDraft(c.abbreviation);
+      setColorDraft(c.colorTag);
+    }
+  }, [c, editing]);
+
   if (!c) {
     return (
       <div>
@@ -135,19 +160,178 @@ export function CourseDetailView() {
             {c.prof && <div style={{ fontSize: 14, color: "var(--label-secondary)" }}>{c.prof}</div>}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
               <AppleBadge color={c.color}>{c.ects} CP</AppleBadge>
+              {c.abbreviation && (
+                <AppleBadge color="var(--label-secondary)" bg="var(--fill-quaternary)">
+                  {c.abbreviation}
+                </AppleBadge>
+              )}
               <AppleBadge color="var(--label-secondary)" bg="var(--fill-quaternary)">
                 {vls.length} VL · {ubs.length} ÜB
               </AppleBadge>
             </div>
           </div>
-          <AppleBtn
-            variant={active ? "primary" : "secondary"}
-            size="sm"
-            onClick={() => void toggleCourseActive(c.id, !active)}
-          >
-            {active ? "Gewählt" : "Wählen"}
-          </AppleBtn>
+          <div style={{ display: "flex", gap: 6, flexShrink: 0, alignItems: "center" }}>
+            <AppleBtn
+              variant="secondary"
+              size="sm"
+              onClick={() => setEditing((v) => !v)}
+            >
+              {editing ? "Schließen" : "Bearbeiten"}
+            </AppleBtn>
+            <AppleBtn
+              variant={active ? "primary" : "secondary"}
+              size="sm"
+              onClick={() => void toggleCourseActive(c.id, !active)}
+            >
+              {active ? "Gewählt" : "Wählen"}
+            </AppleBtn>
+          </div>
         </div>
+
+        {editing && (
+          <div
+            style={{
+              marginTop: 16,
+              paddingTop: 16,
+              borderTop: "0.5px solid var(--separator)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 16
+            }}
+          >
+            <div>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  letterSpacing: "0.04em",
+                  textTransform: "uppercase",
+                  color: "var(--label-tertiary)",
+                  marginBottom: 6
+                }}
+              >
+                Abkürzung
+              </div>
+              <input
+                type="text"
+                value={abbrDraft}
+                onChange={(e) => setAbbrDraft(e.target.value)}
+                maxLength={16}
+                placeholder="z. B. ALG2"
+                style={{
+                  width: "100%",
+                  height: 36,
+                  padding: "0 12px",
+                  borderRadius: 10,
+                  border: "0.5px solid var(--separator)",
+                  background: "var(--bg-elevated)",
+                  color: "var(--label-primary)",
+                  fontSize: 14,
+                  outline: "none"
+                }}
+              />
+            </div>
+
+            <div>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  letterSpacing: "0.04em",
+                  textTransform: "uppercase",
+                  color: "var(--label-tertiary)",
+                  marginBottom: 6
+                }}
+              >
+                Anzeigefarbe
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                {COLOR_TAGS.map((tag) => {
+                  const selected = colorDraft === tag;
+                  return (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => setColorDraft(tag)}
+                      aria-label={tag}
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 999,
+                        background: `var(--${tag})`,
+                        border: selected
+                          ? "2px solid var(--label-primary)"
+                          : "2px solid transparent",
+                        boxShadow: selected ? "0 0 0 2px var(--bg-elevated) inset" : "none",
+                        cursor: "pointer",
+                        padding: 0
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+              <AppleBtn
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  if (deleting) return;
+                  if (!window.confirm(`„${c.name}" wirklich entfernen?`)) return;
+                  setDeleting(true);
+                  removeCourse(c.id)
+                    .then(() => navigate("/"))
+                    .catch(() => setDeleting(false));
+                }}
+                disabled={deleting || saving}
+              >
+                {deleting ? "Entfernen…" : "Kurs entfernen"}
+              </AppleBtn>
+              <div style={{ display: "flex", gap: 8 }}>
+                <AppleBtn
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setAbbrDraft(c.abbreviation);
+                    setColorDraft(c.colorTag);
+                    setEditing(false);
+                  }}
+                  disabled={saving || deleting}
+                >
+                  Abbrechen
+                </AppleBtn>
+                <AppleBtn
+                  variant="primary"
+                  size="sm"
+                  onClick={() => {
+                    const trimmed = abbrDraft.trim();
+                    if (trimmed.length === 0) return;
+                    const patch: { abbreviation?: string; color_tag?: CourseColorTag } = {};
+                    if (trimmed !== c.abbreviation) patch.abbreviation = trimmed;
+                    if (colorDraft !== c.colorTag) patch.color_tag = colorDraft;
+                    if (Object.keys(patch).length === 0) {
+                      setEditing(false);
+                      return;
+                    }
+                    setSaving(true);
+                    updateCourseDetails(c.id, patch)
+                      .then(() => setEditing(false))
+                      .finally(() => setSaving(false));
+                  }}
+                  disabled={
+                    saving ||
+                    deleting ||
+                    abbrDraft.trim().length === 0 ||
+                    (abbrDraft.trim() === c.abbreviation && colorDraft === c.colorTag)
+                  }
+                >
+                  {saving ? "Speichern…" : "Speichern"}
+                </AppleBtn>
+              </div>
+            </div>
+          </div>
+        )}
       </AppleCard>
 
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16 }}>

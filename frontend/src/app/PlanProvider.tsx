@@ -32,6 +32,10 @@ type PlanContextValue = {
 
   toggleCourseActive: (courseId: string, isActive: boolean) => Promise<void>;
   removeCourse: (courseId: string) => Promise<void>;
+  updateCourseDetails: (
+    courseId: string,
+    patch: { abbreviation?: string; color_tag?: CourseColorTag }
+  ) => Promise<void>;
   addCatalogCourse: (
     catalogCourseId: string,
     options?: {
@@ -198,6 +202,15 @@ export function PlanProvider({ children }: { children: ReactNode }) {
     [planId]
   );
 
+  const updateCourseDetails = useCallback(
+    async (courseId: string, patch: { abbreviation?: string; color_tag?: CourseColorTag }) => {
+      if (!planId) return;
+      const updated = await patchCourse(planId, courseId, patch);
+      setPlan(updated);
+    },
+    [planId]
+  );
+
   const addCatalogCourse = useCallback(
     async (
       catalogCourseId: string,
@@ -247,6 +260,7 @@ export function PlanProvider({ children }: { children: ReactNode }) {
       resetPlan,
       toggleCourseActive,
       removeCourse,
+      updateCourseDetails,
       addCatalogCourse,
       refresh
     }),
@@ -263,6 +277,7 @@ export function PlanProvider({ children }: { children: ReactNode }) {
       resetPlan,
       toggleCourseActive,
       removeCourse,
+      updateCourseDetails,
       addCatalogCourse,
       refresh
     ]
