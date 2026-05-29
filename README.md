@@ -8,12 +8,11 @@ Code-first semester planning with anonymous PostgreSQL-backed plans and a public
 - The browser stores only `semester-planner:plan-id` plus local UI preferences such as dark mode and filters.
 - The scanner scrapes public anonymous TUCaN Vorlesungsverzeichnis pages and ingests normalized catalogue data through the backend.
 - The scanner also enriches the catalogue with module handbooks and central TU Prüfungsplan exam candidates.
-- Public sharing is intentionally not implemented in this version.
-- Inferno is not used.
+- Plans can be shared read/write via an unguessable share token (`/plans/by-token/:token`); tokens can be rotated.
 
 ## Tech Stack
 
-- Frontend: React + Vite + TypeScript + react-big-calendar
+- Frontend: React + Vite + TypeScript (built to static assets, served by nginx in production)
 - Backend: Node.js + Express + TypeScript + Prisma
 - Shared package: TypeScript appointment parser
 - Scanner: Node.js + TypeScript + Cheerio
@@ -27,7 +26,11 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-For local browser access:
+`POSTGRES_PASSWORD` and `SCANNER_TOKEN` have no fallback in `docker-compose.yml` — compose
+fails fast if they are unset. The copied `.env` provides development values for them; replace
+those (and set `CORS_ORIGIN`) before any public deployment.
+
+For local browser access (publishes the frontend on a host port):
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
@@ -35,13 +38,28 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 
 Frontend: http://localhost:3000
 
-Run the optional scanner:
+The frontend image builds the app to static assets and serves them with nginx, which also
+proxies `/api` to the backend. The backend runs `prisma migrate deploy` on boot and then the
+compiled server. The scanner service fills an empty catalogue on its own startup.
+
+## Production Deployment
 
 ```bash
-docker compose --profile scanner up -d --build
+cp .env.example .env   # then edit: strong POSTGRES_PASSWORD + SCANNER_TOKEN, CORS_ORIGIN, CF_TUNNEL_TOKEN
+docker compose up -d --build
 ```
 
-On normal backend boot, an empty catalogue automatically starts a one-shot scanner run.
+Public traffic reaches the stack through the `cloudflared` tunnel, which forwards to the
+frontend (port 3000); TLS is terminated by Cloudflare.
+
+Database schema is managed by Prisma migrations (`backend/prisma/migrations`). A fresh database
+is created automatically by `prisma migrate deploy` on first backend boot. If you are upgrading a
+database that was previously created with `prisma db push` (no migration history), baseline it
+once so the initial migration is marked as already applied:
+
+```bash
+docker compose run --rm backend npx prisma migrate resolve --applied 0_init
+```
 
 ## Local Development
 
@@ -80,13 +98,15 @@ npm run module-handbooks:once
 
 - `POSTGRES_DB` default: `stundenplan`
 - `POSTGRES_USER` default: `app`
-- `POSTGRES_PASSWORD` default: `appsecret`
-- `VITE_API_URL` default: `/api`
-- `API_PROXY_TARGET` default: `http://backend:4000`
-- `ALLOWED_HOSTS` default: `semesti.plani.dev`
+- `POSTGRES_PASSWORD` **required** (no fallback) — set a strong value
+- `SCANNER_TOKEN` **required** (no fallback) — set a strong value
+- `CORS_ORIGIN` default: empty (reflects request origin); set to your public site for production
+- `RATE_LIMIT_PER_MINUTE` default: `120` — API requests per minute per client IP (scanner ingest exempt)
+- `VITE_API_URL` default: `/api` (baked into the frontend bundle at build time)
+- `API_PROXY_TARGET` default: `http://backend:4000` (local `npm run dev` only)
+- `ALLOWED_HOSTS` default: `semesti.plani.dev` (local `npm run dev` only)
 - `CF_TUNNEL_TOKEN` default: empty
-- `SCANNER_TOKEN` default: `changeme-dev-scanner-token`
-- `AUTO_START_SCANNER_ON_EMPTY_DB` default: `true`
+- `AUTO_START_SCANNER_ON_EMPTY_DB` default: `false` (the scanner service handles empty catalogues)
 - `TUCAN_START_URL` default: current public FB20 catalogue entry URL
 - `TUCAN_RATE_LIMIT_MS` default: `750`
 - `SCAN_INTERVAL_HOURS` default: `24`

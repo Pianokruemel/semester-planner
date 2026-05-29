@@ -1,4 +1,4 @@
-FROM node:20-alpine
+FROM node:20-alpine AS build
 
 WORKDIR /app
 
@@ -11,7 +11,13 @@ COPY packages/shared packages/shared
 COPY frontend frontend
 RUN cd packages/shared && npm run build
 
-EXPOSE 3000
+ARG VITE_API_URL=/api
+ENV VITE_API_URL=$VITE_API_URL
+RUN cd frontend && npm run build
 
-WORKDIR /app/frontend
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "3000"]
+FROM nginx:alpine
+
+COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/frontend/dist /usr/share/nginx/html
+
+EXPOSE 3000

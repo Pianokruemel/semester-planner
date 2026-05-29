@@ -1,10 +1,11 @@
 services:
   db:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-stundenplan}
       POSTGRES_USER: ${POSTGRES_USER:-app}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-appsecret}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app} -d ${POSTGRES_DB:-stundenplan}"]
       interval: 3s
@@ -21,14 +22,17 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+    restart: unless-stopped
     environment:
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
       POSTGRES_DB: ${POSTGRES_DB:-stundenplan}
       POSTGRES_USER: ${POSTGRES_USER:-app}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-appsecret}
-      SCANNER_TOKEN: ${SCANNER_TOKEN:-changeme-dev-scanner-token}
-      AUTO_START_SCANNER_ON_EMPTY_DB: ${AUTO_START_SCANNER_ON_EMPTY_DB:-true}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      SCANNER_TOKEN: ${SCANNER_TOKEN:?SCANNER_TOKEN must be set in .env}
+      CORS_ORIGIN: ${CORS_ORIGIN:-}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-120}
+      AUTO_START_SCANNER_ON_EMPTY_DB: ${AUTO_START_SCANNER_ON_EMPTY_DB:-false}
       TUCAN_BASE_URL: ${TUCAN_BASE_URL:-https://www.tucan.tu-darmstadt.de}
       TUCAN_START_URL: ${TUCAN_START_URL:-https://www.tucan.tu-darmstadt.de/scripts/mgrqispi.dll?APPNAME=CampusNet&ARGUMENTS=-Afez3VF0kNRWWWcwTNgBVrq8fobYoZ~dHDF6AnnwI4IIVV5NeLRN~RQaKmVRfjYvXw5IFXBqbO4U5gS9mvWof-jgLzvEgui0iEfQUP0oi0LKBTEAaXWA6aRjZQqOrRcLEIB7t5FVYNDp89oBVTmiQO-07JjBRjOg5UuBJEDVqB00tc~JgnNBFeMR4pg3Oy6LkgbkhuI8Gs3aZLZo_&PRGNAME=ACTION}
       TUCAN_RATE_LIMIT_MS: ${TUCAN_RATE_LIMIT_MS:-750}
@@ -37,6 +41,12 @@ services:
       MODULE_HANDBOOK_OVERVIEW_URL: ${MODULE_HANDBOOK_OVERVIEW_URL:-https://www.informatik.tu-darmstadt.de/studium_fb20/im_studium/formulare_und_dokumente/ordnungen/index.de.jsp}
       EXAM_PLAN_OVERVIEW_URL: ${EXAM_PLAN_OVERVIEW_URL:-https://www.intern.tu-darmstadt.de/verwaltung/dez_ii/campusmanagement/cm_lvm/pruefungstermine_zentral/index.de.jsp}
       PORT: 4000
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:4000/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
     expose:
       - "4000"
     depends_on:
@@ -49,10 +59,15 @@ services:
     build:
       context: .
       dockerfile: frontend/Dockerfile
-    environment:
-      VITE_API_URL: ${VITE_API_URL:-/api}
-      API_PROXY_TARGET: ${API_PROXY_TARGET:-http://backend:4000}
-      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-semesti.plani.dev}
+      args:
+        VITE_API_URL: ${VITE_API_URL:-/api}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:3000/ || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
     expose:
       - "3000"
     depends_on:
@@ -64,9 +79,10 @@ services:
     build:
       context: .
       dockerfile: scanner/Dockerfile
+    restart: unless-stopped
     environment:
       BACKEND_API_URL: http://backend:4000/api
-      SCANNER_TOKEN: ${SCANNER_TOKEN:-changeme-dev-scanner-token}
+      SCANNER_TOKEN: ${SCANNER_TOKEN:?SCANNER_TOKEN must be set in .env}
       TUCAN_BASE_URL: ${TUCAN_BASE_URL:-https://www.tucan.tu-darmstadt.de}
       TUCAN_START_URL: ${TUCAN_START_URL:-https://www.tucan.tu-darmstadt.de/scripts/mgrqispi.dll?APPNAME=CampusNet&ARGUMENTS=-Afez3VF0kNRWWWcwTNgBVrq8fobYoZ~dHDF6AnnwI4IIVV5NeLRN~RQaKmVRfjYvXw5IFXBqbO4U5gS9mvWof-jgLzvEgui0iEfQUP0oi0LKBTEAaXWA6aRjZQqOrRcLEIB7t5FVYNDp89oBVTmiQO-07JjBRjOg5UuBJEDVqB00tc~JgnNBFeMR4pg3Oy6LkgbkhuI8Gs3aZLZo_&PRGNAME=ACTION}
       TUCAN_RATE_LIMIT_MS: ${TUCAN_RATE_LIMIT_MS:-750}
