@@ -344,18 +344,22 @@ async function ingestModuleHandbooks(
     return;
   }
 
-  const response = await fetch(`${config.backendApiUrl}/catalog/internal/module-handbooks`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-scanner-token": config.scannerToken
-    },
-    body: JSON.stringify({ programmes, documents })
-  });
+  const response = await withTransientRetry(`module_handbooks_ingest ${config.backendApiUrl}`, async () => {
+    const res = await fetch(`${config.backendApiUrl}/catalog/internal/module-handbooks`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-scanner-token": config.scannerToken
+      },
+      body: JSON.stringify({ programmes, documents })
+    });
 
-  if (!response.ok) {
-    throw new Error(`Backend handbook ingest failed ${response.status}: ${await response.text()}`);
-  }
+    if (!res.ok) {
+      throw new Error(`Backend handbook ingest failed ${res.status}: ${await res.text()}`);
+    }
+
+    return res;
+  });
 
   const result = await response.json();
   console.log(`module_handbooks_ingested ${JSON.stringify(result)}`);

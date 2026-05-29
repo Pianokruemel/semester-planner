@@ -92,7 +92,8 @@ services:
       MODULE_HANDBOOK_OVERVIEW_URL: ${MODULE_HANDBOOK_OVERVIEW_URL:-https://www.informatik.tu-darmstadt.de/studium_fb20/im_studium/formulare_und_dokumente/ordnungen/index.de.jsp}
       EXAM_PLAN_OVERVIEW_URL: ${EXAM_PLAN_OVERVIEW_URL:-https://www.intern.tu-darmstadt.de/verwaltung/dez_ii/campusmanagement/cm_lvm/pruefungstermine_zentral/index.de.jsp}
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - planner
 
