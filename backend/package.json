@@ -4,15 +4,19 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node -e \"console.log('No automated backend tests configured yet.')\"",
+    "prelint": "npm --prefix ../packages/shared run build",
+    "predev": "npm --prefix ../packages/shared run build",
+    "prebuild": "npm --prefix ../packages/shared run build",
+    "test": "tsx --test src/**/*.test.ts",
     "lint": "tsc --noEmit -p tsconfig.json",
     "dev": "tsx watch src/index.ts",
     "docker:dev": "node scripts/dockerDev.js",
+    "docker:start": "node scripts/start.js",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
+    "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
-    "prisma:deploy": "prisma migrate deploy",
+    "prisma:push": "prisma db push",
     "seed": "node prisma/seed.js"
   },
   "keywords": [],
@@ -22,9 +26,11 @@
   "private": true,
   "dependencies": {
     "@prisma/client": "^6.18.0",
+    "@semester-planner/shared": "file:../packages/shared",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
+    "express-rate-limit": "^7.5.1",
     "zod": "^4.3.6"
   },
   "devDependencies": {

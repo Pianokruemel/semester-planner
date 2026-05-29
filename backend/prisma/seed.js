@@ -1,5 +1,5 @@
 async function main() {
-  console.log("No seed data required for encrypted share snapshots.");
+  console.log("No seed data required for anonymous planner data.");
 }
 
 main()

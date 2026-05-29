@@ -1,0 +1,241 @@
+/* =============================================================
+   Plani Family — Design Tokens
+   Apple-clean, dark-primary, pastel rainbow gradient as hero accent.
+   ============================================================= */
+
+:root {
+  /* ---------- Brand gradient (the hero accent) ----------
+     Sampled from the Plani "P" mark. Soft, dreamy, never harsh.
+     Use for: progress, highlights, premium, splash, brand hits. */
+  --plani-grad-violet:  #B7A0E5;
+  --plani-grad-blue:    #9CC3F0;
+  --plani-grad-mint:    #B6E3CC;
+  --plani-grad-yellow:  #F4E59A;
+
+  --plani-gradient: linear-gradient(
+    135deg,
+    var(--plani-grad-violet)  0%,
+    var(--plani-grad-blue)   34%,
+    var(--plani-grad-mint)   68%,
+    var(--plani-grad-yellow) 100%
+  );
+
+  /* Soft conic version for hero/marketing moments */
+  --plani-gradient-conic: conic-gradient(
+    from 220deg at 50% 50%,
+    var(--plani-grad-violet),
+    var(--plani-grad-blue),
+    var(--plani-grad-mint),
+    var(--plani-grad-yellow),
+    var(--plani-grad-violet)
+  );
+
+  /* ---------- Surfaces (dark, primary) ----------
+     Pure-black-leaning OLED dark. Apple Sonoma-ish.
+     Backgrounds get cooler/lighter as they elevate. */
+  --bg-base:        #07070A;   /* app background */
+  --bg-raised:      #101015;   /* sidebar, sheets */
+  --bg-elevated:    #16171C;   /* cards, popovers */
+  --bg-overlay:     #1E1F25;   /* modals, hover surfaces on cards */
+  --bg-input:       #1A1B21;
+
+  /* Translucent / glass — for floating chrome over content */
+  --bg-glass:       color-mix(in oklab, #16171C 75%, transparent);
+  --bg-glass-strong:color-mix(in oklab, #16171C 90%, transparent);
+
+  /* ---------- Hairlines & dividers ---------- */
+  --line-soft:      rgba(255,255,255,0.06);
+  --line:           rgba(255,255,255,0.10);
+  --line-strong:    rgba(255,255,255,0.16);
+  --line-focus:     rgba(180, 190, 235, 0.55);
+
+  /* ---------- Foreground / text ----------
+     Apple-style alpha layering on dark. */
+  --fg-primary:     rgba(255,255,255,0.96);
+  --fg-secondary:   rgba(255,255,255,0.66);
+  --fg-tertiary:    rgba(255,255,255,0.42);
+  --fg-quaternary:  rgba(255,255,255,0.24);
+  --fg-on-accent:   #07070A;
+
+  /* ---------- Semantic / system ----------
+     Tuned to sit harmoniously next to the pastel rainbow.
+     Slightly desaturated vs. iOS system colors. */
+  --sys-blue:       #6FA8FF;
+  --sys-green:      #5BD6A0;
+  --sys-yellow:     #F2C765;
+  --sys-orange:     #F19A6B;
+  --sys-red:        #F07A7A;
+  --sys-purple:     #B79CF0;
+
+  /* Tinted backgrounds for badges / pills (12% opacity equivalents) */
+  --sys-blue-bg:    rgba(111,168,255,0.14);
+  --sys-green-bg:   rgba( 91,214,160,0.14);
+  --sys-yellow-bg:  rgba(242,199,101,0.14);
+  --sys-orange-bg:  rgba(241,154,107,0.14);
+  --sys-red-bg:     rgba(240,122,122,0.14);
+  --sys-purple-bg:  rgba(183,156,240,0.14);
+
+  /* ---------- Course / subject color chips ----------
+     Soft pastel set, used to color-tag courses and events.
+     Always rendered as low-saturation tints on dark. */
+  --chip-1:  #B7A0E5;  /* violet  */
+  --chip-2:  #9CC3F0;  /* blue    */
+  --chip-3:  #7FCFE0;  /* cyan    */
+  --chip-4:  #B6E3CC;  /* mint    */
+  --chip-5:  #D7E8A7;  /* lime    */
+  --chip-6:  #F4E59A;  /* yellow  */
+  --chip-7:  #F2C8A0;  /* peach   */
+  --chip-8:  #F0AEC0;  /* rose    */
+
+  /* ---------- Type ---------- */
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+    "Segoe UI", system-ui, sans-serif;
+  --font-mono:
+    ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  /* Italic serif — only for display moments that echo the logo */
+  --font-display-serif:
+    "New York", "Charter", "Iowan Old Style", "Times New Roman",
+    Georgia, serif;
+
+  /* Type scale (Apple HIG-aligned) */
+  --t-caption2:    11px / 14px var(--font-sans);
+  --t-caption1:    12px / 16px var(--font-sans);
+  --t-footnote:    13px / 18px var(--font-sans);
+  --t-subhead:     15px / 20px var(--font-sans);
+  --t-callout:     16px / 22px var(--font-sans);
+  --t-body:        17px / 24px var(--font-sans);   /* default */
+  --t-headline:    17px / 22px var(--font-sans);   /* semibold body */
+  --t-title3:      20px / 26px var(--font-sans);
+  --t-title2:      24px / 30px var(--font-sans);
+  --t-title1:      28px / 34px var(--font-sans);
+  --t-large-title: 34px / 40px var(--font-sans);
+  --t-display:     56px / 60px var(--font-display-serif);
+
+  --fw-regular:    400;
+  --fw-medium:     510;
+  --fw-semibold:   600;
+  --fw-bold:       700;
+
+  --tracking-tight:  -0.022em;   /* large titles */
+  --tracking-normal: -0.011em;   /* body */
+  --tracking-wide:    0.02em;    /* eyebrows, all-caps */
+
+  /* ---------- Spacing (4px base) ---------- */
+  --s-0:   0;
+  --s-1:   2px;
+  --s-2:   4px;
+  --s-3:   8px;
+  --s-4:  12px;
+  --s-5:  16px;
+  --s-6:  20px;
+  --s-7:  24px;
+  --s-8:  32px;
+  --s-9:  40px;
+  --s-10: 48px;
+  --s-11: 64px;
+  --s-12: 80px;
+
+  /* ---------- Radii ---------- */
+  --r-xs:  4px;
+  --r-sm:  6px;
+  --r-md:  10px;
+  --r-lg:  14px;   /* default for cards, buttons */
+  --r-xl:  20px;
+  --r-2xl: 28px;
+  --r-pill: 999px;
+
+  /* ---------- Elevation ----------
+     On dark we lean on hairlines + subtle glow more than drop shadow. */
+  --shadow-1: 0 1px 0 rgba(255,255,255,0.04) inset,
+              0 1px 2px rgba(0,0,0,0.40);
+  --shadow-2: 0 1px 0 rgba(255,255,255,0.05) inset,
+              0 8px 24px -8px rgba(0,0,0,0.6);
+  --shadow-3: 0 1px 0 rgba(255,255,255,0.06) inset,
+              0 24px 60px -20px rgba(0,0,0,0.7);
+  --shadow-glow: 0 0 0 1px rgba(180,190,235,0.18),
+                 0 0 40px -8px rgba(156,195,240,0.25);
+
+  /* ---------- Motion ---------- */
+  --ease-standard: cubic-bezier(0.2, 0.0, 0.0, 1.0);
+  --ease-emph:     cubic-bezier(0.32, 0.72, 0, 1);
+  --dur-fast:   140ms;
+  --dur-base:   220ms;
+  --dur-slow:   360ms;
+
+  /* ---------- Layout ---------- */
+  --sidebar-w:      260px;
+  --topbar-h:        52px;
+  --content-max:    1200px;
+}
+
+/* Optional light token overrides — secondary surface only.
+   The product is dark-primary; light is provided for completeness. */
+@media (prefers-color-scheme: light) {
+  :root.theme-auto, :root[data-theme="light"] {
+    --bg-base:      #FAFAFB;
+    --bg-raised:    #FFFFFF;
+    --bg-elevated:  #FFFFFF;
+    --bg-overlay:   #FFFFFF;
+    --bg-input:     #F2F2F4;
+
+    --line-soft:   rgba(0,0,0,0.05);
+    --line:        rgba(0,0,0,0.09);
+    --line-strong: rgba(0,0,0,0.16);
+
+    --fg-primary:    rgba(0,0,0,0.92);
+    --fg-secondary:  rgba(0,0,0,0.62);
+    --fg-tertiary:   rgba(0,0,0,0.42);
+    --fg-quaternary: rgba(0,0,0,0.22);
+  }
+}
+
+/* =============================================================
+   Base reset — minimal, scoped to .plani-doc so design-system
+   pages inherit the right defaults without polluting consumers.
+   ============================================================= */
+
+.plani-doc {
+  background: var(--bg-base);
+  color: var(--fg-primary);
+  font: var(--t-body);
+  font-weight: var(--fw-regular);
+  letter-spacing: var(--tracking-normal);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+.plani-doc *,
+.plani-doc *::before,
+.plani-doc *::after { box-sizing: border-box; }
+
+/* Type utility classes — match the scale above */
+.t-caption2    { font: var(--t-caption2); }
+.t-caption1    { font: var(--t-caption1); }
+.t-footnote    { font: var(--t-footnote); }
+.t-subhead     { font: var(--t-subhead); }
+.t-callout     { font: var(--t-callout); }
+.t-body        { font: var(--t-body); }
+.t-headline    { font: var(--t-headline); font-weight: var(--fw-semibold); }
+.t-title3      { font: var(--t-title3); font-weight: var(--fw-semibold); letter-spacing: var(--tracking-tight); }
+.t-title2      { font: var(--t-title2); font-weight: var(--fw-semibold); letter-spacing: var(--tracking-tight); }
+.t-title1      { font: var(--t-title1); font-weight: var(--fw-bold);     letter-spacing: var(--tracking-tight); }
+.t-large-title { font: var(--t-large-title); font-weight: var(--fw-bold); letter-spacing: var(--tracking-tight); }
+.t-display     { font: var(--t-display); font-style: italic; letter-spacing: -0.02em; }
+.t-eyebrow     { font: var(--t-caption1); font-weight: var(--fw-semibold); letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg-tertiary); }
+.t-mono        { font-family: var(--font-mono); font-size: 13px; }
+
+/* Foreground shortcuts */
+.fg-primary    { color: var(--fg-primary); }
+.fg-secondary  { color: var(--fg-secondary); }
+.fg-tertiary   { color: var(--fg-tertiary); }
+.fg-quaternary { color: var(--fg-quaternary); }
+
+/* Gradient text */
+.fg-gradient {
+  background: var(--plani-gradient);
+  -webkit-background-clip: text;
+          background-clip: text;
+  color: transparent;
+}

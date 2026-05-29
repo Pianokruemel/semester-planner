@@ -7,18 +7,300 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model ShareSnapshot {
-  id               String          @id @default(uuid()) @db.Uuid
-  locatorHash      String          @unique @map("locator_hash") @db.Char(64)
-  ciphertext       String          @db.Text
-  nonce            String          @db.VarChar(64)
-  payloadVersion   String          @map("payload_version") @db.VarChar(20)
-  cryptoVersion    String          @map("crypto_version") @db.VarChar(64)
-  parentSnapshotId String?         @map("parent_snapshot_id") @db.Uuid
-  createdAt        DateTime        @default(now()) @map("created_at")
-  expiresAt        DateTime?       @map("expires_at")
-  parentSnapshot   ShareSnapshot?  @relation("ShareSnapshotLineage", fields: [parentSnapshotId], references: [id], onDelete: SetNull)
-  childSnapshots   ShareSnapshot[] @relation("ShareSnapshotLineage")
+model Plan {
+  id                       String               @id @default(uuid()) @db.Uuid
+  name                     String               @default("Mein Stundenplan")
+  shareToken               String?              @unique @map("share_token") @db.VarChar(32)
+  preferredStudyProgramKey String?              @map("preferred_study_program_key")
+  preferredStudyProgram    CatalogStudyProgram? @relation(fields: [preferredStudyProgramKey], references: [key], onDelete: SetNull)
+  createdAt                DateTime             @default(now()) @map("created_at")
+  updatedAt                DateTime             @updatedAt @map("updated_at")
+  categories               PlanCategory[]
+  courses                  PlannedCourse[]
 
-  @@map("share_snapshots")
+  @@map("plans")
+}
+
+model PlanCategory {
+  id                    String          @id @default(uuid()) @db.Uuid
+  planId                String          @map("plan_id") @db.Uuid
+  plan                  Plan            @relation(fields: [planId], references: [id], onDelete: Cascade)
+  name                  String
+  color                 String          @db.VarChar(7)
+  position              Int             @default(0)
+  source                String          @default("manual") @db.VarChar(32)
+  curriculumCategoryKey String?         @map("curriculum_category_key")
+  requiredCpMin         Int?            @map("required_cp_min")
+  requiredCpMax         Int?            @map("required_cp_max")
+  createdAt             DateTime        @default(now()) @map("created_at")
+  updatedAt             DateTime        @updatedAt @map("updated_at")
+  courses               PlannedCourse[]
+
+  @@unique([planId, name])
+  @@unique([planId, curriculumCategoryKey])
+  @@index([planId])
+  @@map("plan_categories")
+}
+
+model PlannedCourse {
+  id                             String               @id @default(uuid()) @db.Uuid
+  planId                         String               @map("plan_id") @db.Uuid
+  plan                           Plan                 @relation(fields: [planId], references: [id], onDelete: Cascade)
+  catalogCourseId                String?              @map("catalog_course_id") @db.Uuid
+  catalogCourse                  CatalogCourse?       @relation(fields: [catalogCourseId], references: [id], onDelete: SetNull)
+  catalogSyncedAt                DateTime?            @map("catalog_synced_at")
+  catalogLastScannedAtAtSync     DateTime?            @map("catalog_last_scanned_at_at_sync")
+  catalogAppointmentsFingerprint String?              @map("catalog_appointments_fingerprint") @db.VarChar(64)
+  catalogSubgroupKey             String?              @map("catalog_subgroup_key")
+  catalogSubgroupTitle           String?              @map("catalog_subgroup_title")
+  catalogProgramKey              String?              @map("catalog_program_key")
+  catalogProgramLabel            String?              @map("catalog_program_label")
+  catalogProgramPoLabel          String?              @map("catalog_program_po_label")
+  catalogProgramClassPath        String[]             @default([]) @map("catalog_program_class_path")
+  catalogProgramModuleNumber     String?              @map("catalog_program_module_number")
+  catalogProgramModuleTitle      String?              @map("catalog_program_module_title")
+  categoryId                     String?              @map("category_id") @db.Uuid
+  category                       PlanCategory?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  name                           String
+  abbreviation                   String               @db.VarChar(32)
+  cp                             Int
+  courseNumber                   String?              @map("course_number")
+  instructor                     String?
+  colorTag                       String?              @map("color_tag") @db.VarChar(16)
+  isActive                       Boolean              @default(true) @map("is_active")
+  createdAt                      DateTime             @default(now()) @map("created_at")
+  updatedAt                      DateTime             @updatedAt @map("updated_at")
+  appointments                   PlannedAppointment[]
+  exam                           PlannedExam?
+
+  @@index([planId])
+  @@index([catalogCourseId])
+  @@index([catalogProgramKey])
+  @@index([categoryId])
+  @@index([courseNumber])
+  @@map("planned_courses")
+}
+
+model PlannedAppointment {
+  id       String        @id @default(uuid()) @db.Uuid
+  courseId String        @map("course_id") @db.Uuid
+  course   PlannedCourse @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  date     DateTime
+  timeFrom String        @map("time_from") @db.VarChar(5)
+  timeTo   String        @map("time_to") @db.VarChar(5)
+  room     String
+  type     String        @db.VarChar(32)
+  position Int           @default(0)
+
+  @@index([courseId])
+  @@index([date])
+  @@map("planned_appointments")
+}
+
+model PlannedExam {
+  id       String        @id @default(uuid()) @db.Uuid
+  courseId String        @unique @map("course_id") @db.Uuid
+  course   PlannedCourse @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  date     DateTime
+  timeFrom String        @map("time_from") @db.VarChar(5)
+  timeTo   String        @map("time_to") @db.VarChar(5)
+
+  @@map("planned_exams")
+}
+
+model CatalogScanRun {
+  id             String    @id @default(uuid()) @db.Uuid
+  source         String    @default("tucan")
+  semesterKey    String    @map("semester_key")
+  status         String
+  startedAt      DateTime  @default(now()) @map("started_at")
+  finishedAt     DateTime? @map("finished_at")
+  coursesSeen    Int       @default(0) @map("courses_seen")
+  coursesCreated Int       @default(0) @map("courses_created")
+  coursesUpdated Int       @default(0) @map("courses_updated")
+  coursesFailed  Int       @default(0) @map("courses_failed")
+  errorText      String?   @map("error_text") @db.Text
+
+  @@map("catalog_scan_runs")
+}
+
+model CatalogCourse {
+  id                 String               @id @default(uuid()) @db.Uuid
+  semesterKey        String               @map("semester_key")
+  source             String               @default("tucan")
+  sourceKey          String               @map("source_key")
+  sourceUrl          String?              @map("source_url") @db.Text
+  title              String
+  courseNumber       String?              @map("course_number")
+  abbreviation       String?
+  cp                 Int?
+  eventType          String?              @map("event_type")
+  language           String?
+  faculty            String?
+  path               String[]
+  instructors        String[]
+  detailsJson        Json?                @map("details_json")
+  rawAppointmentText String?              @map("raw_appointment_text") @db.Text
+  firstDate          DateTime?            @map("first_date")
+  lastDate           DateTime?            @map("last_date")
+  appointmentCount   Int                  @default(0) @map("appointment_count")
+  lastScannedAt      DateTime             @default(now()) @map("last_scanned_at")
+  createdAt          DateTime             @default(now()) @map("created_at")
+  updatedAt          DateTime             @updatedAt @map("updated_at")
+  appointments       CatalogAppointment[]
+  plannedCourses     PlannedCourse[]
+  examMatches        CatalogExamCourseMatch[]
+
+  @@unique([semesterKey, source, sourceKey])
+  @@index([semesterKey])
+  @@index([source])
+  @@index([courseNumber])
+  @@index([title])
+  @@index([faculty])
+  @@map("catalog_courses")
+}
+
+model CatalogExamPlanDocument {
+  id                String                 @id @default(uuid()) @db.Uuid
+  semesterKey       String                 @map("semester_key")
+  semesterIndex     Int                    @map("semester_index")
+  fileUrl           String                 @map("file_url") @db.Text
+  fileLabel         String                 @map("file_label")
+  contentHash       String                 @map("content_hash") @db.VarChar(64)
+  etag              String?
+  lastModified      String?                @map("last_modified")
+  fetchStatus       String                 @map("fetch_status")
+  parseStatus       String                 @map("parse_status")
+  errorText         String?                @map("error_text") @db.Text
+  rowCount          Int                    @default(0) @map("row_count")
+  validRowCount     Int                    @default(0) @map("valid_row_count")
+  matchedRowCount   Int                    @default(0) @map("matched_row_count")
+  unmatchedRowCount Int                    @default(0) @map("unmatched_row_count")
+  fetchedAt         DateTime               @default(now()) @map("fetched_at")
+  parsedAt          DateTime?              @map("parsed_at")
+  createdAt         DateTime               @default(now()) @map("created_at")
+  updatedAt         DateTime               @updatedAt @map("updated_at")
+  candidates        CatalogExamCandidate[]
+
+  @@unique([semesterKey, fileUrl])
+  @@index([semesterIndex])
+  @@index([contentHash])
+  @@map("catalog_exam_plan_documents")
+}
+
+model CatalogExamCandidate {
+  id                   String                  @id @default(uuid()) @db.Uuid
+  documentId           String                  @map("document_id") @db.Uuid
+  document             CatalogExamPlanDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  rowNumber            Int                     @map("row_number")
+  weekday              String?
+  date                 DateTime
+  timeFrom             String                  @map("time_from") @db.VarChar(5)
+  timeTo               String                  @map("time_to") @db.VarChar(5)
+  appointmentType      String?                 @map("appointment_type")
+  lecturer             String?
+  courseName           String                  @map("course_name")
+  normalizedCourseTitle String                 @map("normalized_course_title")
+  extractedCourseNumbers String[]              @default([]) @map("extracted_course_numbers")
+  rowHash              String                  @map("row_hash") @db.VarChar(64)
+  createdAt            DateTime                @default(now()) @map("created_at")
+  matches              CatalogExamCourseMatch[]
+
+  @@unique([documentId, rowHash])
+  @@index([date])
+  @@index([normalizedCourseTitle])
+  @@map("catalog_exam_candidates")
+}
+
+model CatalogExamCourseMatch {
+  id              String               @id @default(uuid()) @db.Uuid
+  candidateId     String               @map("candidate_id") @db.Uuid
+  candidate       CatalogExamCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  catalogCourseId String               @map("catalog_course_id") @db.Uuid
+  catalogCourse   CatalogCourse        @relation(fields: [catalogCourseId], references: [id], onDelete: Cascade)
+  matchReasons    String[]             @default([]) @map("match_reasons")
+  createdAt       DateTime             @default(now()) @map("created_at")
+
+  @@unique([candidateId, catalogCourseId])
+  @@index([catalogCourseId])
+  @@map("catalog_exam_course_matches")
+}
+
+model CatalogStudyProgram {
+  key       String                   @id
+  label     String
+  pageUrl   String                   @map("page_url") @db.Text
+  createdAt DateTime                 @default(now()) @map("created_at")
+  updatedAt DateTime                 @updatedAt @map("updated_at")
+  documents ModuleHandbookDocument[]
+  courses   ModuleHandbookCourse[]
+  plans     Plan[]
+
+  @@index([label])
+  @@map("catalog_study_programs")
+}
+
+model ModuleHandbookDocument {
+  id            String                 @id @default(uuid()) @db.Uuid
+  programKey    String                 @map("program_key")
+  program       CatalogStudyProgram    @relation(fields: [programKey], references: [key], onDelete: Cascade)
+  poLabel       String                 @map("po_label")
+  pdfUrl        String                 @map("pdf_url") @db.Text
+  pdfLabel      String                 @map("pdf_label")
+  contentHash   String                 @map("content_hash") @db.VarChar(64)
+  etag          String?
+  lastModified  String?                @map("last_modified")
+  fetchStatus   String                 @map("fetch_status")
+  parseStatus   String                 @map("parse_status")
+  errorText     String?                @map("error_text") @db.Text
+  fetchedAt     DateTime               @default(now()) @map("fetched_at")
+  parsedAt      DateTime?              @map("parsed_at")
+  createdAt     DateTime               @default(now()) @map("created_at")
+  updatedAt     DateTime               @updatedAt @map("updated_at")
+  courses       ModuleHandbookCourse[]
+
+  @@unique([programKey, poLabel, pdfUrl])
+  @@index([programKey])
+  @@index([contentHash])
+  @@map("module_handbook_documents")
+}
+
+model ModuleHandbookCourse {
+  id                     String                 @id @default(uuid()) @db.Uuid
+  documentId             String                 @map("document_id") @db.Uuid
+  document               ModuleHandbookDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  programKey             String                 @map("program_key")
+  program                CatalogStudyProgram    @relation(fields: [programKey], references: [key], onDelete: Cascade)
+  poLabel                String                 @map("po_label")
+  moduleNumber           String                 @map("module_number")
+  courseNumber           String?                @map("course_number")
+  normalizedCourseNumber String?                @map("normalized_course_number")
+  moduleTitle            String                 @map("module_title")
+  cp                     Int?
+  classPath              String[]               @default([]) @map("class_path")
+  pageNumber             Int?                   @map("page_number")
+  createdAt              DateTime               @default(now()) @map("created_at")
+
+  @@index([programKey])
+  @@index([poLabel])
+  @@index([moduleNumber])
+  @@index([normalizedCourseNumber])
+  @@map("module_handbook_courses")
+}
+
+model CatalogAppointment {
+  id       String        @id @default(uuid()) @db.Uuid
+  courseId String        @map("course_id") @db.Uuid
+  course   CatalogCourse @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  date     DateTime
+  timeFrom String        @map("time_from") @db.VarChar(5)
+  timeTo   String        @map("time_to") @db.VarChar(5)
+  room     String
+  type     String        @db.VarChar(32)
+  position Int           @default(0)
+
+  @@unique([courseId, date, timeFrom, timeTo, room, type])
+  @@index([courseId])
+  @@index([date])
+  @@map("catalog_appointments")
 }
