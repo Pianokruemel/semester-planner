@@ -124,16 +124,19 @@ export function PlanProvider({ children }: { children: ReactNode }) {
       setPlanId(fetched.id);
       writeStoredPlanId(fetched.id);
     } catch (e) {
-      // Only forget the plan when the backend says it is truly gone (404).
-      // A transient network/5xx blip must not wipe the only handle to the plan.
-      const planIsGone = axios.isAxiosError(e) && e.response?.status === 404;
-      if (planIsGone) {
+      // Forget the stored plan only when the id will never load again: a definitive
+      // 4xx (404 gone, 400 invalid id, ...). Transient failures — 5xx, rate-limit
+      // (429), request timeout (408) and network errors — must NOT wipe the only
+      // handle to the plan, so we keep it and let the user retry.
+      const status = axios.isAxiosError(e) ? e.response?.status : undefined;
+      const planUnrecoverable =
+        typeof status === "number" && status >= 400 && status < 500 && status !== 429 && status !== 408;
+      if (planUnrecoverable) {
         setPlan(null);
         setPlanId(null);
         writeStoredPlanId(null);
       }
-      const message = e instanceof Error ? e.message : "Plan konnte nicht geladen werden.";
-      setError(planIsGone ? message : "Plan konnte nicht geladen werden. Bitte erneut versuchen.");
+      setError("Plan konnte nicht geladen werden. Bitte erneut versuchen.");
     } finally {
       setIsLoading(false);
     }

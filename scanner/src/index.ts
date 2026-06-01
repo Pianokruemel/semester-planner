@@ -41,6 +41,8 @@ const FETCH_RETRY_DELAY_MS = 5_000;
 // Guard against decompression bombs / accidental huge files when downloading
 // remote PDFs and Excel exam plans into memory.
 const MAX_DOWNLOAD_BYTES = 25 * 1024 * 1024;
+// Cap on redirect hops we follow while re-validating each one (see guardedFetch).
+const MAX_REDIRECTS = 5;
 
 function isTransientFetchError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
@@ -48,49 +50,107 @@ function isTransientFetchError(error: unknown): boolean {
   return error.message.includes("fetch failed");
 }
 
-// Allow only the public university domains the scanner is configured to crawl.
-// Every fetched URL comes from scraped HTML, so without this an attacker who can
-// influence a TU page (or a redirect) could point the scanner at internal hosts
-// (e.g. the backend, cloud metadata) — a classic SSRF.
-function allowedHostSuffixes(config: ScannerConfig): string[] {
-  const suffixes = new Set<string>();
+// Thrown when a URL fails the SSRF allowlist. Kept distinct from transient fetch
+// failures so the crawl can skip a single bad link instead of aborting (see scanOnce).
+export class BlockedUrlError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BlockedUrlError";
+  }
+}
+
+// The exact set of public university hosts the scanner is configured to crawl.
+// Every scraped/redirected URL is checked against this — without it an attacker who
+// can influence a TU page or a redirect could point the scanner at internal hosts
+// (e.g. the backend, cloud metadata) — a classic SSRF. We match the full hostname,
+// not the registrable domain, so the rest of the tu-darmstadt.de zone is NOT trusted.
+function allowedHosts(config: ScannerConfig): Set<string> {
+  const hosts = new Set<string>();
   for (const source of [config.tucanBaseUrl, config.moduleHandbookOverviewUrl, config.examPlanOverviewUrl]) {
     try {
-      const host = new URL(source).hostname.toLowerCase();
-      const labels = host.split(".");
-      suffixes.add(labels.length >= 2 ? labels.slice(-2).join(".") : host);
+      hosts.add(new URL(source).hostname.toLowerCase());
     } catch {
       // Ignore unparseable configuration URLs.
     }
   }
-  return [...suffixes];
+  return hosts;
 }
 
-function assertAllowedScrapeUrl(url: string, config: ScannerConfig): void {
+export function assertAllowedScrapeUrl(url: string, config: ScannerConfig): void {
   let parsed: URL;
   try {
     parsed = new URL(url);
   } catch {
-    throw new Error(`Blocked malformed scrape URL: ${url}`);
+    throw new BlockedUrlError(`Blocked malformed scrape URL: ${url}`);
   }
 
   if (parsed.protocol !== "https:") {
-    throw new Error(`Blocked non-https scrape URL: ${url}`);
+    throw new BlockedUrlError(`Blocked non-https scrape URL: ${url}`);
   }
 
-  const host = parsed.hostname.toLowerCase();
-  const allowed = allowedHostSuffixes(config).some((suffix) => host === suffix || host.endsWith(`.${suffix}`));
-  if (!allowed) {
-    throw new Error(`Blocked scrape URL outside the allowed university domains: ${url}`);
+  if (!allowedHosts(config).has(parsed.hostname.toLowerCase())) {
+    throw new BlockedUrlError(`Blocked scrape URL outside the allowed university hosts: ${url}`);
   }
 }
 
+// Follow redirects manually so the SSRF allowlist is enforced on EVERY hop. With
+// fetch's default redirect:"follow", an allowed page could 30x-bounce the scanner
+// to an internal host without re-checking — defeating assertAllowedScrapeUrl.
+export async function guardedFetch(url: string, config: ScannerConfig, init: RequestInit): Promise<Response> {
+  let target = url;
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
+    assertAllowedScrapeUrl(target, config);
+    const response = await fetch(target, { ...init, redirect: "manual" });
+    const location = response.headers.get("location");
+    if (location && response.status >= 300 && response.status < 400) {
+      // Discard the redirect body so the socket can be reused, then re-validate the next hop.
+      await response.body?.cancel().catch(() => undefined);
+      target = new URL(location, target).toString();
+      continue;
+    }
+    return response;
+  }
+  throw new BlockedUrlError(`Blocked scrape URL after too many redirects (>${MAX_REDIRECTS}): ${url}`);
+}
+
+// Read a response body, aborting as soon as the running size exceeds the cap.
+// response.arrayBuffer() would buffer the ENTIRE body first, so a server that
+// omits/forges content-length (or gzip-bombs) could exhaust memory before any
+// size check — here we stop reading the moment the limit is crossed.
+export async function readBodyCapped(response: Response, maxBytes: number, url: string): Promise<Uint8Array> {
+  const body = response.body;
+  if (!body) {
+    return new Uint8Array();
+  }
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const result = await reader.read();
+    if (result.done) {
+      break;
+    }
+    total += result.value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      throw new Error(`Remote file exceeds ${maxBytes} bytes: ${url}`);
+    }
+    chunks.push(result.value);
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out;
+}
+
 async function fetchText(url: string, config: ScannerConfig): Promise<string> {
-  assertAllowedScrapeUrl(url, config);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const response = await fetch(url, {
+    const response = await guardedFetch(url, config, {
       headers: {
         "user-agent": "semester-planner-public-catalog-scanner/0.1"
       },
@@ -112,11 +172,10 @@ async function fetchBytes(
   config: ScannerConfig,
   headers: Record<string, string> = {}
 ): Promise<{ status: number; bytes: Uint8Array; etag: string | null; lastModified: string | null }> {
-  assertAllowedScrapeUrl(url, config);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const response = await fetch(url, {
+    const response = await guardedFetch(url, config, {
       headers: {
         "user-agent": "semester-planner-public-catalog-scanner/0.1",
         ...headers
@@ -132,19 +191,18 @@ async function fetchBytes(
       throw new Error(`Binary request failed ${response.status}: ${url}`);
     }
 
-    const declaredLength = Number(response.headers.get("content-length") ?? "");
+    // Reject obviously-oversized downloads up front, but rely on the streaming
+    // cap below for the real guard — content-length can be absent or forged.
+    const declaredLength = Number(response.headers.get("content-length"));
     if (Number.isFinite(declaredLength) && declaredLength > MAX_DOWNLOAD_BYTES) {
       throw new Error(`Remote file exceeds ${MAX_DOWNLOAD_BYTES} bytes (declared ${declaredLength}): ${url}`);
     }
 
-    const buffer = await response.arrayBuffer();
-    if (buffer.byteLength > MAX_DOWNLOAD_BYTES) {
-      throw new Error(`Remote file exceeds ${MAX_DOWNLOAD_BYTES} bytes (${buffer.byteLength}): ${url}`);
-    }
+    const bytes = await readBodyCapped(response, MAX_DOWNLOAD_BYTES, url);
 
     return {
       status: response.status,
-      bytes: new Uint8Array(buffer),
+      bytes,
       etag: response.headers.get("etag"),
       lastModified: response.headers.get("last-modified")
     };
@@ -600,15 +658,27 @@ export async function scanOnce(config: ScannerConfig, deps: ScanOnceDeps = {}) {
       await sleep(config.rateLimitMs);
       // Retry transient failures on navigation pages: unlike per-course fetches
       // (which are isolated below), a thrown navigation fetch aborts the whole crawl.
-      const html =
-        item.url === startUrl
-          ? startHtml
-          : await withTransientRetry(
-              `navigation ${item.url}`,
-              () => fetchText(item.url, config),
-              FETCH_RETRY_ATTEMPTS,
-              config.fetchRetryDelayMs
-            );
+      let html: string;
+      if (item.url === startUrl) {
+        html = startHtml;
+      } else {
+        try {
+          html = await withTransientRetry(
+            `navigation ${item.url}`,
+            () => fetchText(item.url, config),
+            FETCH_RETRY_ATTEMPTS,
+            config.fetchRetryDelayMs
+          );
+        } catch (error) {
+          // A blocked (off-allowlist / non-https) link must not abort the whole
+          // crawl — skip just this page. Transient and other errors still propagate.
+          if (error instanceof BlockedUrlError) {
+            console.warn(`navigation_skipped url=${item.url} reason="${error.message}"`);
+            continue;
+          }
+          throw error;
+        }
+      }
       const links = extractLinks(html, item.url);
       console.log(`navigation url=${item.url} links=${links.length}`);
 

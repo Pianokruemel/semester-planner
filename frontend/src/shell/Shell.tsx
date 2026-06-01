@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Outlet, useLocation, useNavigate, useParams } from "react-router-dom";
 import { Icon, type IconName } from "../components/Icon";
 import { AppleBtn } from "../components/AppleBtn";
@@ -28,6 +28,12 @@ export function Shell() {
     if (location.pathname.startsWith("/konflikte")) return "conflicts";
     return "overview";
   }, [location.pathname]);
+
+  // Errors are tied to the screen/action that produced them; dismiss the banner
+  // when the user navigates elsewhere so a stale message doesn't follow them.
+  useEffect(() => {
+    clearError();
+  }, [location.pathname, clearError]);
 
   const detailCourse = params.id ? uiCourses.find((c) => c.id === params.id) : null;
   const screenLabel = detailCourse

@@ -19,7 +19,7 @@ type Props = { visible: boolean; onClose: () => void };
 const SEARCH_DEBOUNCE_MS = 220;
 
 export function AddCourseModal({ visible, onClose }: Props) {
-  const { plan, addCatalogCourse } = usePlan();
+  const { plan, addCatalogCourse, clearError } = usePlan();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<CatalogCourseCard[]>([]);
@@ -179,8 +179,12 @@ export function AddCourseModal({ visible, onClose }: Props) {
       onClose();
       navigate(`/course/${newCourseId}`);
     } catch (e) {
+      // Surface the failure inline in the dialog only; clear the global banner
+      // that addCatalogCourse's mutation wrapper raised so it isn't shown twice
+      // (and doesn't linger behind the modal after it closes).
       const msg = e instanceof Error ? e.message : "Import fehlgeschlagen.";
       setError(msg);
+      clearError();
     } finally {
       setImporting(false);
     }
