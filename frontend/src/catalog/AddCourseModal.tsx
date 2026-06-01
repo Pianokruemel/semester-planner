@@ -12,6 +12,7 @@ import {
 } from "../api/catalog";
 import { usePlan } from "../app/PlanProvider";
 import { fmtDate, fmtDay, fmtTime } from "../lib/formatDate";
+import { useFocusTrap } from "../lib/useFocusTrap";
 
 type Props = { visible: boolean; onClose: () => void };
 
@@ -32,6 +33,9 @@ export function AddCourseModal({ visible, onClose }: Props) {
   const [cpInput, setCpInput] = useState("");
   const [categoryInput, setCategoryInput] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useFocusTrap(dialogRef, visible, onClose);
 
   const importedCatalogIds = new Set(
     (plan?.courses ?? []).map((c) => c.catalog_course_id).filter((x): x is string => !!x)
@@ -200,6 +204,11 @@ export function AddCourseModal({ visible, onClose }: Props) {
         }}
       />
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Vorlesung hinzufügen"
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
         style={{
           position: "relative",

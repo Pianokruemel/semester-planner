@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Icon } from "./Icon";
 import { usePlan } from "../app/PlanProvider";
+import { useFocusTrap } from "../lib/useFocusTrap";
 
 type Props = { visible: boolean; onClose: () => void };
 
@@ -9,6 +10,9 @@ type CopyKey = "link" | "token";
 export function ShareModal({ visible, onClose }: Props) {
   const { plan } = usePlan();
   const [copied, setCopied] = useState<CopyKey | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useFocusTrap(dialogRef, visible, onClose);
 
   useEffect(() => {
     if (!visible) setCopied(null);
@@ -49,6 +53,11 @@ export function ShareModal({ visible, onClose }: Props) {
         }}
       />
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Plan teilen"
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
         style={{
           position: "relative",

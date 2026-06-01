@@ -7,6 +7,7 @@ export type ScannerConfig = {
   facultyPrefix: string;
   startUrl: string | null;
   batchSize: number;
+  fetchRetryDelayMs: number;
   moduleHandbookOverviewUrl: string;
   examPlanOverviewUrl: string;
 };
@@ -21,6 +22,7 @@ export function readConfig(env = process.env): ScannerConfig {
     facultyPrefix: env.TUCAN_FACULTY_PREFIX ?? "FB20 - Informatik",
     startUrl: env.TUCAN_START_URL ?? null,
     batchSize: Number(env.SCAN_BATCH_SIZE ?? 25),
+    fetchRetryDelayMs: Number(env.FETCH_RETRY_DELAY_MS ?? 5000),
     moduleHandbookOverviewUrl:
       env.MODULE_HANDBOOK_OVERVIEW_URL ??
       "https://www.informatik.tu-darmstadt.de/studium_fb20/im_studium/formulare_und_dokumente/ordnungen/index.de.jsp",

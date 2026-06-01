@@ -181,7 +181,7 @@ export function CourseDetailView() {
             <AppleBtn
               variant={active ? "primary" : "secondary"}
               size="sm"
-              onClick={() => void toggleCourseActive(c.id, !active)}
+              onClick={() => toggleCourseActive(c.id, !active).catch(() => {})}
             >
               {active ? "Gewählt" : "Wählen"}
             </AppleBtn>
@@ -317,6 +317,7 @@ export function CourseDetailView() {
                     setSaving(true);
                     updateCourseDetails(c.id, patch)
                       .then(() => setEditing(false))
+                      .catch(() => {})
                       .finally(() => setSaving(false));
                   }}
                   disabled={

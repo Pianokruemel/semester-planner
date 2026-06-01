@@ -24,6 +24,7 @@ import {
 } from "../lib/moduleHandbooks";
 import { prisma } from "../lib/prisma";
 import { serializeCatalogCourse } from "../lib/serialization";
+import { secretsMatch } from "../lib/tokens";
 import { HttpError } from "../middleware/errorHandler";
 
 const uuidSchema = z.string().uuid();
@@ -135,7 +136,7 @@ function requireScannerToken(req: { header(name: string): string | undefined }) 
   }
 
   const received = req.header("x-scanner-token") ?? "";
-  if (received !== expected) {
+  if (!secretsMatch(received, expected)) {
     throw new HttpError(403, "Scanner-Token ungültig.");
   }
 }

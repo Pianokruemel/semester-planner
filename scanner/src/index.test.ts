@@ -11,6 +11,7 @@ const baseConfig: ScannerConfig = {
   facultyPrefix: "FB20 - Informatik",
   startUrl: "https://tucan.test/start",
   batchSize: 10,
+  fetchRetryDelayMs: 0,
   moduleHandbookOverviewUrl: "https://informatik.test/ordnungen/",
   examPlanOverviewUrl: "https://exam.test/"
 };

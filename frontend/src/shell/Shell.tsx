@@ -18,7 +18,7 @@ export function Shell() {
   const navigate = useNavigate();
   const location = useLocation();
   const params = useParams();
-  const { uiCourses, theme, toggleTheme } = usePlan();
+  const { uiCourses, theme, toggleTheme, error, clearError } = usePlan();
   const [sideOpen, setSideOpen] = useState(false);
   const [showCatalogue, setShowCatalogue] = useState(false);
   const [showShare, setShowShare] = useState(false);
@@ -110,6 +110,32 @@ export function Shell() {
           </button>
         </div>
         <div className="content">
+          {error && (
+            <div
+              role="alert"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                margin: "0 0 16px",
+                padding: "12px 16px",
+                borderRadius: 12,
+                background: "var(--danger-bg, #fee2e2)",
+                color: "var(--danger-fg, #991b1b)",
+                fontSize: 14
+              }}
+            >
+              <span style={{ flex: 1 }}>{error}</span>
+              <button
+                type="button"
+                onClick={clearError}
+                aria-label="Meldung schließen"
+                style={{ border: "none", background: "transparent", color: "inherit", cursor: "pointer", fontSize: 18, lineHeight: 1 }}
+              >
+                ×
+              </button>
+            </div>
+          )}
           <Outlet />
         </div>
       </div>

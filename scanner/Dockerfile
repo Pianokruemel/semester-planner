@@ -12,5 +12,10 @@ COPY scanner scanner
 RUN cd packages/shared && npm run build
 RUN cd scanner && npm run build
 
+# Drop privileges: the crawler only needs to read its own files and make
+# outbound HTTPS requests.
+RUN chown -R node:node /app
+USER node
+
 WORKDIR /app/scanner
 CMD ["npm", "run", "scan:watch"]

@@ -1,7 +1,15 @@
+# Cap container log files so a noisy service can't fill the host disk.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
+    logging: *default-logging
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-stundenplan}
       POSTGRES_USER: ${POSTGRES_USER:-app}
@@ -11,6 +19,7 @@ services:
       interval: 3s
       timeout: 3s
       retries: 20
+      start_period: 10s
     expose:
       - "5432"
     volumes:
@@ -23,6 +32,7 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     restart: unless-stopped
+    logging: *default-logging
     environment:
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
@@ -62,6 +72,7 @@ services:
       args:
         VITE_API_URL: ${VITE_API_URL:-/api}
     restart: unless-stopped
+    logging: *default-logging
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://localhost:3000/ || exit 1"]
       interval: 10s
@@ -80,6 +91,7 @@ services:
       context: .
       dockerfile: scanner/Dockerfile
     restart: unless-stopped
+    logging: *default-logging
     environment:
       BACKEND_API_URL: http://backend:4000/api
       SCANNER_TOKEN: ${SCANNER_TOKEN:?SCANNER_TOKEN must be set in .env}
@@ -101,6 +113,7 @@ services:
     image: cloudflare/cloudflared:latest
     command: tunnel --no-autoupdate run --token=${CF_TUNNEL_TOKEN:-}
     restart: unless-stopped
+    logging: *default-logging
     environment:
       CF_TUNNEL_TOKEN: ${CF_TUNNEL_TOKEN:-}
     depends_on:
