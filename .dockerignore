@@ -1,0 +1,30 @@
+# Build contexts for all services use the repo root (`context: .`), so this
+# single ignore file keeps host-only artefacts and secrets out of every image.
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+
+# Never ship real secrets into an image; keep the templates available.
+**/.env
+**/.env.*
+!**/.env.example
+
+# VCS, tooling, editor and agent metadata
+.git
+**/.git
+.github
+.vscode
+.agents
+.codex
+.claude
+
+# Logs and local caches
+*.log
+**/*.log
+npm-debug.log*
+
+# Docs, design assets and other files no service build needs
+new_ui
+images
+SeP.png
+*.md

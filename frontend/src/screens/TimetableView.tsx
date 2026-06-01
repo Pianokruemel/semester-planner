@@ -11,10 +11,11 @@ import type { UICourse } from "../app/adapter";
 const SEGMENTS = ["Übersicht", "Stundenplan", "Konflikte"];
 const SEGMENT_PATHS = ["/", "/stundenplan", "/konflikte"];
 const DAYS = ["Mo", "Di", "Mi", "Do", "Fr"];
-const HOURS = ["08", "09", "10", "11", "12", "13", "14", "15", "16", "17"];
 const ROW_H = 52;
+const DEFAULT_START_HOUR = 8;
+const DEFAULT_END_HOUR = 18;
 
-type GridEntry = UICourse & { di: number; startH: number; startMin: number; spanH: number; apptType: "vl" | "ub" };
+type GridEntry = UICourse & { di: number; startHour: number; startMin: number; spanH: number; apptType: "vl" | "ub" };
 
 export function TimetableView() {
   const navigate = useNavigate();
@@ -40,7 +41,7 @@ export function TimetableView() {
         return;
       }
       slots.set(key, {
-        entry: { ...c, di: di - 1, startH: startH - 8, startMin, spanH, apptType: a.type },
+        entry: { ...c, di: di - 1, startHour: startH, startMin, spanH, apptType: a.type },
         count: 1
       });
     });
@@ -49,6 +50,18 @@ export function TimetableView() {
   const grid: GridEntry[] = Array.from(slots.values())
     .filter((s) => s.count > 3)
     .map((s) => s.entry);
+
+  // Widen the visible window so events outside the default 08:00–18:00 range
+  // (early-morning or evening lectures) are never clipped off the grid.
+  let startHour = DEFAULT_START_HOUR;
+  let endHour = DEFAULT_END_HOUR;
+  for (const e of grid) {
+    startHour = Math.min(startHour, Math.floor(e.startHour));
+    endHour = Math.max(endHour, Math.ceil(e.startHour + e.spanH));
+  }
+  startHour = Math.max(0, startHour);
+  endHour = Math.min(24, endHour);
+  const HOURS = Array.from({ length: Math.max(1, endHour - startHour) }, (_, i) => String(startHour + i).padStart(2, "0"));
 
   return (
     <div>
@@ -92,7 +105,7 @@ export function TimetableView() {
                 {h}:00
               </div>
               {DAYS.map((_, di) => {
-                const ev = grid.filter((e) => e.di === di && e.startH === hi);
+                const ev = grid.filter((e) => e.di === di && e.startHour - startHour === hi);
                 return (
                   <div
                     key={di}

@@ -1,3 +1,4 @@
+import axios from "axios";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   type BackendPlan,
@@ -23,6 +24,7 @@ type PlanContextValue = {
   uiCourses: UICourse[];
   isLoading: boolean;
   error: string | null;
+  clearError: () => void;
   theme: Theme;
   toggleTheme: () => void;
 
@@ -122,12 +124,16 @@ export function PlanProvider({ children }: { children: ReactNode }) {
       setPlanId(fetched.id);
       writeStoredPlanId(fetched.id);
     } catch (e) {
-      // 404 or anything else: clear state
-      setPlan(null);
-      setPlanId(null);
-      writeStoredPlanId(null);
+      // Only forget the plan when the backend says it is truly gone (404).
+      // A transient network/5xx blip must not wipe the only handle to the plan.
+      const planIsGone = axios.isAxiosError(e) && e.response?.status === 404;
+      if (planIsGone) {
+        setPlan(null);
+        setPlanId(null);
+        writeStoredPlanId(null);
+      }
       const message = e instanceof Error ? e.message : "Plan konnte nicht geladen werden.";
-      setError(message);
+      setError(planIsGone ? message : "Plan konnte nicht geladen werden. Bitte erneut versuchen.");
     } finally {
       setIsLoading(false);
     }
@@ -184,31 +190,53 @@ export function PlanProvider({ children }: { children: ReactNode }) {
     setError(null);
   }, []);
 
+  const clearError = useCallback(() => setError(null), []);
+
+  // Run a plan mutation, surfacing failures to the UI while preserving the
+  // promise contract: callers that branch on success/failure still see the
+  // rejection (e.g. "navigate only after a successful delete").
+  const runMutation = useCallback(async <T,>(fn: () => Promise<T>): Promise<T> => {
+    try {
+      const result = await fn();
+      setError(null);
+      return result;
+    } catch (e) {
+      setError("Aktion fehlgeschlagen. Bitte erneut versuchen.");
+      throw e;
+    }
+  }, []);
+
   const toggleCourseActive = useCallback(
     async (courseId: string, isActive: boolean) => {
       if (!planId) return;
-      const updated = await patchCourse(planId, courseId, { is_active: isActive });
-      setPlan(updated);
+      await runMutation(async () => {
+        const updated = await patchCourse(planId, courseId, { is_active: isActive });
+        setPlan(updated);
+      });
     },
-    [planId]
+    [planId, runMutation]
   );
 
   const removeCourse = useCallback(
     async (courseId: string) => {
       if (!planId) return;
-      const updated = await apiDeleteCourse(planId, courseId);
-      setPlan(updated);
+      await runMutation(async () => {
+        const updated = await apiDeleteCourse(planId, courseId);
+        setPlan(updated);
+      });
     },
-    [planId]
+    [planId, runMutation]
   );
 
   const updateCourseDetails = useCallback(
     async (courseId: string, patch: { abbreviation?: string; color_tag?: CourseColorTag }) => {
       if (!planId) return;
-      const updated = await patchCourse(planId, courseId, patch);
-      setPlan(updated);
+      await runMutation(async () => {
+        const updated = await patchCourse(planId, courseId, patch);
+        setPlan(updated);
+      });
     },
-    [planId]
+    [planId, runMutation]
   );
 
   const addCatalogCourse = useCallback(
@@ -222,17 +250,19 @@ export function PlanProvider({ children }: { children: ReactNode }) {
       }
     ): Promise<string> => {
       if (!planId) throw new Error("Kein Plan geladen.");
-      const result = await importCatalogCourse(planId, {
-        catalog_course_id: catalogCourseId,
-        category_id: options?.categoryId ?? null,
-        cp_override: options?.cpOverride,
-        color_tag: options?.colorTag ?? null,
-        selected_subgroup_key: options?.selectedSubgroupKey ?? null
+      return runMutation(async () => {
+        const result = await importCatalogCourse(planId, {
+          catalog_course_id: catalogCourseId,
+          category_id: options?.categoryId ?? null,
+          cp_override: options?.cpOverride,
+          color_tag: options?.colorTag ?? null,
+          selected_subgroup_key: options?.selectedSubgroupKey ?? null
+        });
+        setPlan(result.plan);
+        return result.course_id;
       });
-      setPlan(result.plan);
-      return result.course_id;
     },
-    [planId]
+    [planId, runMutation]
   );
 
   const refresh = useCallback(async () => {
@@ -253,6 +283,7 @@ export function PlanProvider({ children }: { children: ReactNode }) {
       uiCourses,
       isLoading,
       error,
+      clearError,
       theme,
       toggleTheme,
       startNewPlan,
@@ -270,6 +301,7 @@ export function PlanProvider({ children }: { children: ReactNode }) {
       uiCourses,
       isLoading,
       error,
+      clearError,
       theme,
       toggleTheme,
       startNewPlan,

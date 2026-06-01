@@ -170,7 +170,7 @@ export function SemesterOverview() {
                   <div style={{ display: "flex", gap: 6, flexShrink: 0, alignItems: "center" }}>
                     {!active && (
                       <button
-                        onClick={() => void removeCourse(c.id)}
+                        onClick={() => removeCourse(c.id).catch(() => {})}
                         title="Aus Übersicht entfernen"
                         style={{
                           width: 30,
@@ -194,7 +194,7 @@ export function SemesterOverview() {
                     <AppleBtn
                       variant={active ? "primary" : "secondary"}
                       size="sm"
-                      onClick={() => void toggleCourseActive(c.id, !active)}
+                      onClick={() => toggleCourseActive(c.id, !active).catch(() => {})}
                     >
                       {active ? "Gewählt" : "Wählen"}
                     </AppleBtn>

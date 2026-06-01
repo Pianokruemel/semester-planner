@@ -38,6 +38,9 @@ type QueueItem = {
 const FETCH_TIMEOUT_MS = 30_000;
 const FETCH_RETRY_ATTEMPTS = 3;
 const FETCH_RETRY_DELAY_MS = 5_000;
+// Guard against decompression bombs / accidental huge files when downloading
+// remote PDFs and Excel exam plans into memory.
+const MAX_DOWNLOAD_BYTES = 25 * 1024 * 1024;
 
 function isTransientFetchError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
@@ -45,7 +48,45 @@ function isTransientFetchError(error: unknown): boolean {
   return error.message.includes("fetch failed");
 }
 
-async function fetchText(url: string): Promise<string> {
+// Allow only the public university domains the scanner is configured to crawl.
+// Every fetched URL comes from scraped HTML, so without this an attacker who can
+// influence a TU page (or a redirect) could point the scanner at internal hosts
+// (e.g. the backend, cloud metadata) — a classic SSRF.
+function allowedHostSuffixes(config: ScannerConfig): string[] {
+  const suffixes = new Set<string>();
+  for (const source of [config.tucanBaseUrl, config.moduleHandbookOverviewUrl, config.examPlanOverviewUrl]) {
+    try {
+      const host = new URL(source).hostname.toLowerCase();
+      const labels = host.split(".");
+      suffixes.add(labels.length >= 2 ? labels.slice(-2).join(".") : host);
+    } catch {
+      // Ignore unparseable configuration URLs.
+    }
+  }
+  return [...suffixes];
+}
+
+function assertAllowedScrapeUrl(url: string, config: ScannerConfig): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`Blocked malformed scrape URL: ${url}`);
+  }
+
+  if (parsed.protocol !== "https:") {
+    throw new Error(`Blocked non-https scrape URL: ${url}`);
+  }
+
+  const host = parsed.hostname.toLowerCase();
+  const allowed = allowedHostSuffixes(config).some((suffix) => host === suffix || host.endsWith(`.${suffix}`));
+  if (!allowed) {
+    throw new Error(`Blocked scrape URL outside the allowed university domains: ${url}`);
+  }
+}
+
+async function fetchText(url: string, config: ScannerConfig): Promise<string> {
+  assertAllowedScrapeUrl(url, config);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
@@ -68,8 +109,10 @@ async function fetchText(url: string): Promise<string> {
 
 async function fetchBytes(
   url: string,
+  config: ScannerConfig,
   headers: Record<string, string> = {}
 ): Promise<{ status: number; bytes: Uint8Array; etag: string | null; lastModified: string | null }> {
+  assertAllowedScrapeUrl(url, config);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
@@ -89,9 +132,19 @@ async function fetchBytes(
       throw new Error(`Binary request failed ${response.status}: ${url}`);
     }
 
+    const declaredLength = Number(response.headers.get("content-length") ?? "");
+    if (Number.isFinite(declaredLength) && declaredLength > MAX_DOWNLOAD_BYTES) {
+      throw new Error(`Remote file exceeds ${MAX_DOWNLOAD_BYTES} bytes (declared ${declaredLength}): ${url}`);
+    }
+
+    const buffer = await response.arrayBuffer();
+    if (buffer.byteLength > MAX_DOWNLOAD_BYTES) {
+      throw new Error(`Remote file exceeds ${MAX_DOWNLOAD_BYTES} bytes (${buffer.byteLength}): ${url}`);
+    }
+
     return {
       status: response.status,
-      bytes: new Uint8Array(await response.arrayBuffer()),
+      bytes: new Uint8Array(buffer),
       etag: response.headers.get("etag"),
       lastModified: response.headers.get("last-modified")
     };
@@ -150,15 +203,15 @@ async function resolveScanStart(config: ScannerConfig): Promise<{
   path: string[];
 }> {
   const configuredUrl = config.startUrl ?? defaultStartUrl(config);
-  const configuredHtml = await fetchText(configuredUrl);
+  const configuredHtml = await fetchText(configuredUrl, config);
   const currentSemesterLink = findCurrentSemesterLink(configuredHtml, configuredUrl);
   const catalogueUrl = currentSemesterLink?.href ?? configuredUrl;
-  const catalogueHtml = currentSemesterLink ? await fetchText(catalogueUrl) : configuredHtml;
+  const catalogueHtml = currentSemesterLink ? await fetchText(catalogueUrl, config) : configuredHtml;
   const semesterKey = currentSemesterLink?.text.replace(/^Aktuell\s*-\s*/i, "") ?? discoverSemesterKey(catalogueHtml);
   const facultyLink = findFacultyLink(catalogueHtml, catalogueUrl, config.facultyPrefix);
 
   if (facultyLink) {
-    const facultyHtml = await fetchText(facultyLink.href);
+    const facultyHtml = await fetchText(facultyLink.href, config);
     const breadcrumb = extractBreadcrumb(facultyHtml);
     return {
       url: facultyLink.href,
@@ -189,9 +242,10 @@ async function ingestBatch(config: ScannerConfig, payload: {
   error_text?: string | null;
   courses: ScrapedCatalogCourse[];
 }) {
+  const maxAttempts = 10;
   let lastError: unknown = null;
 
-  for (let attempt = 1; attempt <= 30; attempt += 1) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
       const response = await fetch(`${config.backendApiUrl}/catalog/internal/ingest`, {
         method: "POST",
@@ -202,14 +256,28 @@ async function ingestBatch(config: ScannerConfig, payload: {
         body: JSON.stringify(payload)
       });
 
-      if (!response.ok) {
-        throw new Error(`Backend ingest failed ${response.status}: ${await response.text()}`);
+      if (response.ok) {
+        return (await response.json()) as { scan_run_id: string };
       }
 
-      return (await response.json()) as { scan_run_id: string };
+      const body = await response.text();
+      // 4xx means the request itself is wrong (bad token, invalid payload).
+      // Retrying can't fix that, so fail fast instead of hammering the backend.
+      if (response.status >= 400 && response.status < 500) {
+        throw new Error(`Backend ingest rejected ${response.status}: ${body}`);
+      }
+      // 5xx is treated as transient and retried below.
+      lastError = new Error(`Backend ingest failed ${response.status}: ${body}`);
     } catch (error) {
+      // Network/abort failures are transient; the 4xx rejection above is not.
+      if (!isTransientFetchError(error)) {
+        throw error;
+      }
       lastError = error;
-      console.error(`backend_ingest_retry attempt=${attempt}`, error);
+    }
+
+    if (attempt < maxAttempts) {
+      console.error(`backend_ingest_retry attempt=${attempt}/${maxAttempts}`, lastError);
       await sleep(2_000);
     }
   }
@@ -369,7 +437,7 @@ export async function enrichModuleHandbooks(config: ScannerConfig) {
   console.log(`module_handbooks_overview url=${config.moduleHandbookOverviewUrl}`);
   const overviewHtml = await withTransientRetry(
     `module_handbooks_overview ${config.moduleHandbookOverviewUrl}`,
-    () => fetchText(config.moduleHandbookOverviewUrl)
+    () => fetchText(config.moduleHandbookOverviewUrl, config)
   );
   const programmePages = discoverStudyProgramPages(overviewHtml, config.moduleHandbookOverviewUrl);
   const links: ModuleHandbookLink[] = [];
@@ -381,7 +449,7 @@ export async function enrichModuleHandbooks(config: ScannerConfig) {
     try {
       const programHtml = await withTransientRetry(
         `module_handbook_program ${page.page_url}`,
-        () => fetchText(page.page_url)
+        () => fetchText(page.page_url, config)
       );
       const link = findCurrentModuleHandbookLink(programHtml, page);
       if (link) {
@@ -403,7 +471,7 @@ export async function enrichModuleHandbooks(config: ScannerConfig) {
       await sleep(config.rateLimitMs);
       const fetched = await withTransientRetry(
         `module_handbook_pdf ${link.pdf_url}`,
-        () => fetchBytes(link.pdf_url)
+        () => fetchBytes(link.pdf_url, config)
       );
 
       const contentHash = sha256Hex(fetched.bytes);
@@ -432,7 +500,7 @@ export async function enrichModuleHandbooks(config: ScannerConfig) {
 
 export async function enrichExamPlans(config: ScannerConfig) {
   console.log(`exam_plan_overview url=${config.examPlanOverviewUrl}`);
-  const overviewHtml = await fetchText(config.examPlanOverviewUrl);
+  const overviewHtml = await fetchText(config.examPlanOverviewUrl, config);
   const links = discoverExamPlanLinks(overviewHtml, config.examPlanOverviewUrl);
   const newest = selectNewestExamPlanLink(links);
 
@@ -446,7 +514,7 @@ export async function enrichExamPlans(config: ScannerConfig) {
   );
   const previous = await fetchExamPlanStatus(config, newest);
   await sleep(config.rateLimitMs);
-  const fetched = await fetchBytes(newest.file_url);
+  const fetched = await fetchBytes(newest.file_url, config);
   const contentHash = sha256Hex(fetched.bytes);
 
   if (previous?.content_hash === contentHash && previous.parse_status === "parsed") {
@@ -530,7 +598,17 @@ export async function scanOnce(config: ScannerConfig, deps: ScanOnceDeps = {}) {
 
       visited.add(item.url);
       await sleep(config.rateLimitMs);
-      const html = item.url === startUrl ? startHtml : await fetchText(item.url);
+      // Retry transient failures on navigation pages: unlike per-course fetches
+      // (which are isolated below), a thrown navigation fetch aborts the whole crawl.
+      const html =
+        item.url === startUrl
+          ? startHtml
+          : await withTransientRetry(
+              `navigation ${item.url}`,
+              () => fetchText(item.url, config),
+              FETCH_RETRY_ATTEMPTS,
+              config.fetchRetryDelayMs
+            );
       const links = extractLinks(html, item.url);
       console.log(`navigation url=${item.url} links=${links.length}`);
 
@@ -544,7 +622,7 @@ export async function scanOnce(config: ScannerConfig, deps: ScanOnceDeps = {}) {
 
           try {
             await sleep(config.rateLimitMs);
-            const courseHtml = await fetchText(link.href);
+            const courseHtml = await fetchText(link.href, config);
             let course = parseCourseDetail(courseHtml, link.href, { semesterKey, path: item.path });
             for (const group of smallGroupsFromCourse(course)) {
               if (!group.url || processedCourseUrls.has(group.url)) {
@@ -554,7 +632,7 @@ export async function scanOnce(config: ScannerConfig, deps: ScanOnceDeps = {}) {
               processedCourseUrls.add(group.url);
               try {
                 await sleep(config.rateLimitMs);
-                const groupHtml = await fetchText(group.url);
+                const groupHtml = await fetchText(group.url, config);
                 const groupDetail = parseSmallGroupDetail(groupHtml);
                 course = attachSmallGroupDetail(course, group.key, groupDetail);
                 console.log(`small_group title="${group.title}" appointments=${groupDetail.appointments?.length ?? 0}`);
