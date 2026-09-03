@@ -238,8 +238,11 @@ function isWithinFaculty(path: string[], link: TucanLink, facultyPrefix: string)
   return path.some((entry) => entry.startsWith(facultyPrefix)) || link.text.startsWith(facultyPrefix);
 }
 
-function defaultStartUrl(config: ScannerConfig): string {
-  return new URL("/scripts/mgrqispi.dll?APPNAME=CampusNet&PRGNAME=ACTION&ARGUMENTS=-N000000000000001,-N000000,-N0,-N0,-N0", config.tucanBaseUrl).toString();
+export function defaultStartUrl(config: ScannerConfig): string {
+  return new URL(
+    "/scripts/mgrqispi.dll?APPNAME=CampusNet&PRGNAME=EXTERNALPAGES&ARGUMENTS=-N000000000000001,-N000344,-Awelcome",
+    config.tucanBaseUrl
+  ).toString();
 }
 
 function navigationTextIsUseful(text: string, facultyPrefix: string): boolean {
@@ -252,6 +255,13 @@ function navigationTextIsUseful(text: string, facultyPrefix: string): boolean {
   }
 
   return true;
+}
+
+function navigationPathKey(path: string[]): string {
+  return path
+    .map((entry) => entry.replace(/\s+/g, " ").trim().toLowerCase())
+    .filter(Boolean)
+    .join("\u001f");
 }
 
 async function resolveScanStart(config: ScannerConfig): Promise<{
@@ -643,6 +653,7 @@ export async function scanOnce(config: ScannerConfig, deps: ScanOnceDeps = {}) {
 
   const queue: QueueItem[] = [{ url: startUrl, path: resolvedStart.path }];
   const visited = new Set<string>();
+  const visitedNavigationPaths = new Set<string>();
   const processedCourseUrls = new Set<string>();
   const batch: ScrapedCatalogCourse[] = [];
   let coursesFailed = 0;
@@ -679,11 +690,19 @@ export async function scanOnce(config: ScannerConfig, deps: ScanOnceDeps = {}) {
           throw error;
         }
       }
+      const breadcrumb = extractBreadcrumb(html);
+      const pagePath = breadcrumb.length > 0 ? breadcrumb : item.path;
+      const pagePathKey = navigationPathKey(pagePath);
+      if (visitedNavigationPaths.has(pagePathKey)) {
+        continue;
+      }
+      visitedNavigationPaths.add(pagePathKey);
+
       const links = extractLinks(html, item.url);
       console.log(`navigation url=${item.url} links=${links.length}`);
 
       for (const link of links) {
-        if (link.kind === "course" && isWithinFaculty(item.path, link, config.facultyPrefix)) {
+        if (link.kind === "course" && isWithinFaculty(pagePath, link, config.facultyPrefix)) {
           if (processedCourseUrls.has(link.href)) {
             continue;
           }
@@ -693,7 +712,7 @@ export async function scanOnce(config: ScannerConfig, deps: ScanOnceDeps = {}) {
           try {
             await sleep(config.rateLimitMs);
             const courseHtml = await fetchText(link.href, config);
-            let course = parseCourseDetail(courseHtml, link.href, { semesterKey, path: item.path });
+            let course = parseCourseDetail(courseHtml, link.href, { semesterKey, path: pagePath });
             for (const group of smallGroupsFromCourse(course)) {
               if (!group.url || processedCourseUrls.has(group.url)) {
                 continue;
@@ -734,7 +753,7 @@ export async function scanOnce(config: ScannerConfig, deps: ScanOnceDeps = {}) {
             continue;
           }
 
-          const nextPath = link.text ? [...item.path, link.text] : item.path;
+          const nextPath = link.text ? [...pagePath, link.text] : pagePath;
           if (isWithinFaculty(nextPath, link, config.facultyPrefix) && nextPath.length <= 8 && !visited.has(link.href)) {
             queue.push({ url: link.href, path: nextPath });
           }

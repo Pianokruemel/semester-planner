@@ -2,8 +2,8 @@ import { ModuleHandbookCourse } from "@prisma/client";
 import { findRequirementForClassPath } from "./curriculum";
 import { prisma } from "./prisma";
 
-const COURSE_NUMBER_PATTERN = /\b\d{2}\s*-\s*\d{2}\s*-\s*\d{4}(?:\s*-\s*[A-Za-z]{1,8})?\b/;
-const BASE_COURSE_NUMBER_PATTERN = /\b\d{2}\s*-\s*\d{2}\s*-\s*\d{4}\b/;
+const COURSE_NUMBER_PATTERN = /\b\d{2}\s*-\s*[A-Za-z0-9]{2}\s*-\s*\d{4}(?:\s*-\s*[A-Za-z0-9]{1,8})?\b/;
+const BASE_COURSE_NUMBER_PATTERN = /\b\d{2}\s*-\s*[A-Za-z0-9]{2}\s*-\s*\d{4}\b/;
 
 export type CatalogProgrammeMatch = {
   program_key: string;

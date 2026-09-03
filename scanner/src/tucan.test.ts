@@ -27,7 +27,7 @@ describe("TUCaN parsing", () => {
   it("finds the active semester and faculty entry from TUCaN navigation pages", () => {
     const html = `
       <nav>
-        <a href="/scripts/mgrqispi.dll?PRGNAME=ACTION&ARGUMENTS=-Acurrent">Aktuell - Sommersemester 2026</a>
+        <a href="/scripts/mgrqispi.dll?PRGNAME=ACTION&ARGUMENTS=-Acurrent">Aktuell - Wintersemester 2026/27</a>
         <a href="/scripts/mgrqispi.dll?PRGNAME=ACTION&ARGUMENTS=-Aarchive">Wintersemester 2024/25</a>
       </nav>
       <div id="pageContent">
@@ -37,7 +37,7 @@ describe("TUCaN parsing", () => {
     `;
 
     expect(findCurrentSemesterLink(html, "https://www.tucan.tu-darmstadt.de/start")).toMatchObject({
-      text: "Aktuell - Sommersemester 2026",
+      text: "Aktuell - Wintersemester 2026/27",
       kind: "navigation"
     });
     expect(findFacultyLink(html, "https://www.tucan.tu-darmstadt.de/start", "FB20 - Informatik")).toMatchObject({
@@ -179,6 +179,58 @@ describe("TUCaN parsing", () => {
       date: "2026-04-27",
       time_from: "08:55",
       type: "Vorlesung"
+    });
+  });
+
+  it("parses TUCaN course numbers with alphanumeric department segments", () => {
+    const course = parseCourseDetail(
+      `
+      <div id="pageContent">
+        <h1>18-AD-2090-vl
+        Adaptive Systeme</h1>
+      </div>
+      `,
+      "https://www.tucan.tu-darmstadt.de/scripts/mgrqispi.dll?PRGNAME=COURSEDETAILS&ARGUMENTS=-N123",
+      { semesterKey: "Wintersemester 2026/27", path: ["FB20 - Informatik"] }
+    );
+
+    expect(course.title).toBe("Adaptive Systeme");
+    expect(course.course_number).toBe("18-ad-2090");
+  });
+
+  it("parses credits and room classes from the current TUCaN course layout", () => {
+    const course = parseCourseDetail(
+      `
+      <div id="pageContent">
+        <h1>20-00-0040-iv
+        Graphische Datenverarbeitung I</h1>
+        <table>
+          <tr><td>
+            <input type="hidden" name="credits" value="0,0" />
+            <p><b>Weitere Informationen</b>:<br />IV, 6 CP/4SWS, i.d.R. jedes Wintersemester</p>
+          </td></tr>
+        </table>
+        <table>
+          <caption>Termine</caption>
+          <tr>
+            <td>1</td>
+            <td name="appointmentDate">Di, 13. Okt. 2026</td>
+            <td name="appointmentTimeFrom">13:30</td>
+            <td name="appointmentDateTo">15:10</td>
+            <td class="rw-course-room">S305/074, Fraunhoferstr. 5, 64283 Darmstadt</td>
+            <td name="appointmentInstructors">Dr. Ada Lovelace</td>
+          </tr>
+        </table>
+      </div>
+      `,
+      "https://www.tucan.tu-darmstadt.de/scripts/mgrqispi.dll?PRGNAME=COURSEDETAILS&ARGUMENTS=-N123",
+      { semesterKey: "Wintersemester 2026/27", path: ["FB20 - Informatik"] }
+    );
+
+    expect(course.cp).toBe(6);
+    expect(course.appointments[0]).toMatchObject({
+      date: "2026-10-13",
+      room: "S305/074, Fraunhoferstr. 5, 64283 Darmstadt"
     });
   });
 

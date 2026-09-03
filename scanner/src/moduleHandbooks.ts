@@ -36,6 +36,10 @@ export type ParsedPdfPage = {
 export const ORDNUNGEN_OVERVIEW_URL =
   "https://www.informatik.tu-darmstadt.de/studium_fb20/im_studium/formulare_und_dokumente/ordnungen/index.de.jsp";
 
+const COURSE_NUMBER_PATTERN = /\b\d{2}-[A-Za-z0-9]{2}-\d{4}(?:-[A-Za-z0-9]{1,8})?\b/;
+const COURSE_NUMBER_GLOBAL_PATTERN = /\b\d{2}-[A-Za-z0-9]{2}-\d{4}(?:-[A-Za-z0-9]{1,8})?\b/g;
+const BASE_COURSE_NUMBER_PATTERN = /\b\d{2}-[A-Za-z0-9]{2}-\d{4}\b/;
+
 export const STUDY_PROGRAM_TARGETS: StudyProgramTarget[] = [
   { key: "bsc-informatik", label: "B. Sc. Informatik", matchers: ["b. sc. informatik", "b.sc. informatik", "bachelor informatik"] },
   { key: "msc-informatik", label: "M. Sc. Informatik", matchers: ["m. sc. informatik", "m.sc. informatik", "master informatik"] },
@@ -196,18 +200,41 @@ export async function parsePdfPages(bytes: Uint8Array): Promise<ParsedPdfPage[]>
 function normalizePdfText(text: string): string {
   return text
     .replace(/([A-Za-zÄÖÜäöüß])-\s*\n\s*([A-Za-zÄÖÜäöüß])/g, "$1$2")
-    .replace(/([A-Za-zÄÖÜäöüß])\s*\n\s*([a-zäöüß]{1,8})(?=\b)/g, "$1$2")
-    .replace(/(\d{2})\s*-\s*(\d{2})\s*-\s*(\d{4})\s*-\s*([A-Za-z]{1,8})/g, "$1-$2-$3-$4")
-    .replace(/(\d{2})\s*-\s*(\d{2})\s*-\s*(\d{4})/g, "$1-$2-$3");
+    .replace(/\bLeistungspun\s*\n\s*kte\b/gi, "Leistungspunkte")
+    .replace(/(\d{2})\s*-\s*([A-Za-z0-9]{2})\s*-\s*(\d{4})\s*-\s*([A-Za-z0-9]{1,8})/g, "$1-$2-$3-$4")
+    .replace(/(\d{2})\s*-\s*([A-Za-z0-9]{2})\s*-\s*(\d{4})/g, "$1-$2-$3");
 }
 
 function normalizeCourseNumber(value: string): string | null {
   const compact = value.replace(/\s+/g, "");
-  return compact.match(/\b\d{2}-\d{2}-\d{4}(?:-[A-Za-z]{1,8})?\b/)?.[0]?.toLowerCase() ?? null;
+  return compact.match(COURSE_NUMBER_PATTERN)?.[0]?.toLowerCase() ?? null;
 }
 
 function baseCourseNumber(value: string | null): string | null {
-  return value?.match(/\b\d{2}-\d{2}-\d{4}\b/)?.[0] ?? null;
+  return value?.match(BASE_COURSE_NUMBER_PATTERN)?.[0]?.toLowerCase() ?? null;
+}
+
+function isCourseSectionStart(line: string): boolean {
+  return /^(?:\d+(?:\.\d+)*\.?\s+)?(?:Kurse des Moduls|Courses?(?: of the)? Module|Veranstaltungen)$/i.test(
+    normalizeWhitespace(line)
+  );
+}
+
+function isCourseSectionEnd(line: string): boolean {
+  return /^(?:\d+(?:\.\d+)*\.?\s+)?(?:Lerninhalt|Lehrinhalt|Course Contents?|Contents?)\b/i.test(
+    normalizeWhitespace(line)
+  );
+}
+
+function courseNumberLines(block: string[]): string[] {
+  const startIndex = block.findIndex(isCourseSectionStart);
+  if (startIndex < 0) {
+    return block;
+  }
+
+  const relativeEndIndex = block.slice(startIndex + 1).findIndex(isCourseSectionEnd);
+  const endIndex = relativeEndIndex < 0 ? block.length : startIndex + relativeEndIndex + 1;
+  return block.slice(startIndex, endIndex);
 }
 
 function extractCp(lines: string[], startIndex: number, endIndex: number): number | null {
@@ -228,7 +255,7 @@ function extractCp(lines: string[], startIndex: number, endIndex: number): numbe
 
 function isModuleFieldLine(line: string): boolean {
   const normalized = normalizeWhitespace(line);
-  return /^(Modul|Module|Veranstaltung|Course|Leistungspunkte|Credit|Arbeitsaufwand|Selbststudium|Moduldauer|Angebotsturnus|Sprache|SWS|Kurs|Kursname|Nr\.?)\b/i.test(
+  return /^(Modulbeschreibung|Modul|Module|Veranstaltung|Course|Leistungspunkte|Credit|Arbeitsaufwand|Selbststudium|Moduldauer|Angebotsturnus|Sprache|SWS|Kurs|Kursname|Nr\.?)\b/i.test(
     normalized
   );
 }
@@ -237,20 +264,40 @@ function isHandbookChromeLine(line: string): boolean {
   return /^Modulhandbuch\b|^M\.\s*Sc\.|^B\.\s*Sc\.|^Technische Universität|^Fachbereich Informatik$/i.test(line);
 }
 
+function isSectionCoverPage(lines: string[]): boolean {
+  return lines.some((line) => /^Modulhandbuch$/i.test(line)) && !lines.some((line) => /^Modulbeschreibung$/i.test(line));
+}
+
 function isStudyRelatedSubheading(line: string): boolean {
   return /^(Praktika(?:,?\s*Projektpraktika)?|Seminare|Praktikum in der Lehre)\b/i.test(line);
 }
 
 function isStandaloneSectionHeading(line: string): boolean {
-  return /^(Pflichtbereich|Wahlpflichtbereich|Vertiefung|Anwendungsfach|Mandatory|Elective|Area|Katalog|Catalog|Masterarbeit|Master Thesis|General Education|Studium Generale)$/i.test(
+  return /^(Pflichtbereich|Wahlpflichtbereich(?:\s+.+)?|Vertiefung|Anwendungsfach|Mandatory|Elective|Area|Katalog|Catalog|Masterarbeit|Master Thesis|General Education|Studium Generale)$/i.test(
     line
   );
+}
+
+function isSpecialisationHeading(line: string): boolean {
+  return /^(?:Vertiefung\s+.+|Data Science and Engineering|Distributed Computing|Visual Computing)$/i.test(line);
+}
+
+function specialisationPath(currentPath: string[]): string[] {
+  return currentPath[0] && isSpecialisationHeading(currentPath[0]) ? [currentPath[0]] : [];
+}
+
+function studyRelatedPath(currentPath: string[]): string[] {
+  const sectionIndex = currentPath.findIndex((entry) => /^Wahlbereich Studienbegleitende Leistungen$/i.test(entry));
+  return sectionIndex >= 0
+    ? currentPath.slice(0, sectionIndex + 1)
+    : [...specialisationPath(currentPath), "Wahlbereich Studienbegleitende Leistungen"];
 }
 
 function cleanHeadingLine(line: string): string {
   const normalized = normalizeWhitespace(line)
     .replace(/,$/, "")
-    .replace(/\s+Veranstaltungen$/i, " Veranstaltungen");
+    .replace(/\s+Veranstaltungen$/i, " Veranstaltungen")
+    .replace(/^[A-Z]\s+(?=(?:Pflichtbereich|Wahlpflichtbereich|Wahlbereich)\b)/, "");
 
   if (
     /^(Wahlbereich|Pflichtbereich|Wahlpflichtbereich|Vertiefung|Anwendungsfach|Mandatory|Elective|Area|Katalog|Catalog|Masterarbeit|Master Thesis|General Education|Studium Generale)\b/i.test(
@@ -261,6 +308,19 @@ function cleanHeadingLine(line: string): string {
   }
 
   return normalized;
+}
+
+function isHeadingContinuation(line: string): boolean {
+  return Boolean(line) &&
+    line.length <= 120 &&
+    !/^\d+$/.test(line) &&
+    !/^\(/.test(line) &&
+    !isModuleFieldLine(line) &&
+    !isHandbookChromeLine(line) &&
+    !isStudyRelatedSubheading(line) &&
+    !isStandaloneSectionHeading(line) &&
+    !isSpecialisationHeading(line) &&
+    !/^Wahl(?:pflicht)?bereiche?\b/i.test(line);
 }
 
 function headingPathFromLines(lines: string[], index: number, currentPath: string[]): { path: string[]; index: number } {
@@ -276,11 +336,7 @@ function headingPathFromLines(lines: string[], index: number, currentPath: strin
     return { path: currentPath, index };
   }
 
-  if (/^Wahlbereich$/i.test(normalized) && next && !isModuleFieldLine(next)) {
-    return { path: [`Wahlbereich ${next}`], index: index + 1 };
-  }
-
-  if (/^Wahlbereich\s+.+/i.test(normalized) && !/^Wahlbereich Studienbegleitende Leistungen$/i.test(normalized)) {
+  if (isSpecialisationHeading(normalized)) {
     return { path: [normalized], index };
   }
 
@@ -289,19 +345,29 @@ function headingPathFromLines(lines: string[], index: number, currentPath: strin
       const subheading = /^(Praktika|Praktika,?\s*Projektpraktika)/i.test(next) && nextAfter === "Veranstaltungen"
         ? `${next} Veranstaltungen`
         : next;
-      return { path: [normalized, subheading], index: subheading === next ? index + 1 : index + 2 };
+      return {
+        path: [...specialisationPath(currentPath), normalized, subheading],
+        index: subheading === next ? index + 1 : index + 2
+      };
     }
 
-    return { path: [normalized], index };
+    return { path: [...specialisationPath(currentPath), normalized], index };
+  }
+
+  if (/^Wahlbereich(?:\s+.+)?$/i.test(normalized)) {
+    const continuation = isHeadingContinuation(next) ? ` ${next}` : "";
+    return {
+      path: [...specialisationPath(currentPath), `${normalized}${continuation}`],
+      index: continuation ? index + 1 : index
+    };
   }
 
   if (/^Praktika,?\s*Projektpraktika und ähnliche$/i.test(normalized) && next === "Veranstaltungen") {
-    return { path: ["Wahlbereich Studienbegleitende Leistungen", `${normalized} Veranstaltungen`], index: index + 1 };
+    return { path: [...studyRelatedPath(currentPath), `${normalized} Veranstaltungen`], index: index + 1 };
   }
 
   if (isStudyRelatedSubheading(normalized)) {
-    const prefix = currentPath[0] === "Wahlbereich Studienbegleitende Leistungen" ? currentPath[0] : "Wahlbereich Studienbegleitende Leistungen";
-    return { path: [prefix, normalized], index };
+    return { path: [...studyRelatedPath(currentPath), normalized], index };
   }
 
   if (isStandaloneSectionHeading(normalized)) {
@@ -311,12 +377,27 @@ function headingPathFromLines(lines: string[], index: number, currentPath: strin
   return { path: currentPath, index };
 }
 
+function cleanModuleTitleLine(line: string): string {
+  const normalized = normalizeWhitespace(line);
+  if (/^\d+(?:\.\d+)*\.?$/.test(normalized)) {
+    return "";
+  }
+
+  return normalized.replace(/^\d+(?:\.\d+)*\.\s+/, "");
+}
+
 function titleFromLines(lines: string[], index: number, moduleNumber: string): string {
   for (let titleIndex = Math.max(0, index - 8); titleIndex < index; titleIndex += 1) {
     if (/^Modulname$/i.test(lines[titleIndex] ?? "")) {
-      const title = normalizeWhitespace(lines[titleIndex + 1] ?? "");
-      if (title && !/\b\d{2}-\d{2}-\d{4}\b/.test(title) && !isModuleFieldLine(title)) {
-        return title;
+      const titleParts: string[] = [];
+      for (let candidateIndex = titleIndex + 1; candidateIndex < index; candidateIndex += 1) {
+        const title = cleanModuleTitleLine(lines[candidateIndex] ?? "");
+        if (title && !BASE_COURSE_NUMBER_PATTERN.test(title) && !isModuleFieldLine(title)) {
+          titleParts.push(title);
+        }
+      }
+      if (titleParts.length > 0) {
+        return titleParts.join(" ");
       }
     }
   }
@@ -327,10 +408,10 @@ function titleFromLines(lines: string[], index: number, moduleNumber: string): s
   }
 
   for (const line of lines.slice(index + 1, index + 5)) {
-    const normalized = normalizeWhitespace(line);
+    const normalized = cleanModuleTitleLine(line);
     if (
       normalized &&
-      !/\b\d{2}-\d{2}-\d{4}\b/.test(normalized) &&
+      !BASE_COURSE_NUMBER_PATTERN.test(normalized) &&
       !/^(Modul|Module)?nummer|Leistungspunkte|Credit|CP\b/i.test(normalized)
     ) {
       return normalized;
@@ -346,7 +427,7 @@ function looksLikeModuleStartAt(lines: string[], index: number): boolean {
     return true;
   }
 
-  if (!/^\d{2}-\d{2}-\d{4}\b(?!-)/.test(line)) {
+  if (!/^\d{2}-[A-Za-z0-9]{2}-\d{4}\b(?!-)/.test(line)) {
     return false;
   }
 
@@ -363,19 +444,28 @@ export function parseModuleHandbookPages(pages: ParsedPdfPage[]): ParsedModuleHa
       .split(/\n+/)
       .map((line) => normalizeWhitespace(line))
       .filter(Boolean);
+    const firstModuleContentIndex = lines.findIndex((line, index) => {
+      return /^Modulbeschreibung$/i.test(line) || looksLikeModuleStartAt(lines, index);
+    });
+    const hasModuleDescription = lines.some((line) => /^Modulbeschreibung$/i.test(line));
+    const headingsOnlyPage = firstModuleContentIndex < 0 && isSectionCoverPage(lines);
 
     for (let index = 0; index < lines.length; index += 1) {
-      const line = lines[index]!;
-      const heading = headingPathFromLines(lines, index, classPath);
-      classPath = heading.path;
-      index = heading.index;
+      const moduleStartsNearby = !hasModuleDescription && lines
+        .slice(index + 1, index + 4)
+        .some((_line, offset) => looksLikeModuleStartAt(lines, index + offset + 1));
+      if (headingsOnlyPage || (firstModuleContentIndex >= 0 && index < firstModuleContentIndex) || moduleStartsNearby) {
+        const heading = headingPathFromLines(lines, index, classPath);
+        classPath = heading.path;
+        index = heading.index;
+      }
 
       const candidateBlock = lines.slice(index, index + 3).join(" ");
       if (!looksLikeModuleStartAt(lines, index)) {
         continue;
       }
 
-      const moduleNumber = baseCourseNumber(candidateBlock.match(/\b\d{2}-\d{2}-\d{4}\b/)?.[0] ?? null);
+      const moduleNumber = baseCourseNumber(candidateBlock.match(BASE_COURSE_NUMBER_PATTERN)?.[0] ?? null);
       if (!moduleNumber) {
         continue;
       }
@@ -390,10 +480,10 @@ export function parseModuleHandbookPages(pages: ParsedPdfPage[]): ParsedModuleHa
       });
       const endIndex = nextModuleIndex > index ? nextModuleIndex : lines.length;
       const block = lines.slice(index, endIndex);
-      const blockText = block.join(" ");
+      const blockText = courseNumberLines(block).join(" ");
       const courseNumbers = [
         ...new Set(
-          Array.from(blockText.matchAll(/\b\d{2}-\d{2}-\d{4}(?:-[A-Za-z]{1,8})?\b/g))
+          Array.from(blockText.matchAll(COURSE_NUMBER_GLOBAL_PATTERN))
             .map((match) => normalizeCourseNumber(match[0]))
             .filter((entry): entry is string => Boolean(entry))
         )

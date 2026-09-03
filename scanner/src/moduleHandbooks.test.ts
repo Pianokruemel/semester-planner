@@ -303,4 +303,245 @@ describe("module handbook text parsing", () => {
       "Bereich der Reinforcement Learning durchzuführen, z.B. im Rahmen einer Bachelor- oder"
     );
   });
+
+  it("resets table-of-contents context at lettered section covers and ignores exam references as courses", () => {
+    const entries = parseModuleHandbookPages([
+      {
+        pageNumber: 3,
+        text: `
+          Inhaltsverzeichnis
+          Wahlbereich Studienbegleitende Leistungen
+          Praktikum in der Lehre
+          Masterarbeit 608
+        `
+      },
+      {
+        pageNumber: 4,
+        text: `
+          Modulhandbuch
+          B. Sc. Informatik
+          A Pflichtbereich
+        `
+      },
+      {
+        pageNumber: 5,
+        text: `
+          Modulbeschreibung
+          Modulname
+          1.1.1.
+          Erfolgreich ins Informatik-Studium starten (eiiss)
+          Modul Nr.
+          20-00-1141
+          1 CP
+          1
+          Kurse des Moduls
+          Kurs Nr.
+          20-00-1141-
+          tt
+          Erfolgreich ins Informatik-Studium starten
+          2
+          Lerninhalt
+          5
+          Prüfungsform
+          [20-00-0000-tt] (Studienleistung, Sonderform, Bestanden/Nicht bestanden)
+        `
+      },
+      {
+        pageNumber: 48,
+        text: `
+          Modulhandbuch
+          B. Sc. Informatik
+          B Wahlpflichtbereich
+        `
+      },
+      {
+        pageNumber: 49,
+        text: `
+          Modulbeschreibung
+          Modulname
+          Betriebssysteme
+          Modul Nr.
+          20-00-0903
+          5 CP
+          Kurse des Moduls
+          20-00-0903-iv Betriebssysteme
+        `
+      }
+    ]);
+
+    expect(entries.filter((entry) => entry.module_number === "20-00-1141")).toEqual([
+      expect.objectContaining({
+        course_number: "20-00-1141-tt",
+        module_title: "Erfolgreich ins Informatik-Studium starten (eiiss)",
+        class_path: ["Pflichtbereich"]
+      })
+    ]);
+    expect(entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          module_number: "20-00-0903",
+          class_path: ["Wahlpflichtbereich"]
+        })
+      ])
+    );
+  });
+
+  it("recognizes named compulsory-elective covers without treating continuation prose as a heading", () => {
+    const entries = parseModuleHandbookPages([
+      {
+        pageNumber: 3,
+        text: `
+          Inhaltsverzeichnis
+          Wahlpflichtbereich Sense 4
+          Masterarbeit 217
+        `
+      },
+      {
+        pageNumber: 4,
+        text: `
+          Modulhandbuch
+          M. Sc. Autonome Systeme und Robotik
+          Wahlpflichtbereich Sense
+        `
+      },
+      {
+        pageNumber: 5,
+        text: `
+          Modulbeschreibung
+          Modulname
+          Bildverarbeitung für Ingenieure - Grundlagen der bildgestützten Mess- und
+          Automatisierungstechnik
+          Modul Nr.
+          20-00-0155
+          3 CP
+          Kurse des Moduls
+          20-00-0155-iv Bildverarbeitung
+        `
+      },
+      {
+        pageNumber: 6,
+        text: `
+          Anwendungen aus dem Wahlbereich Plan werden in diesem Modul verglichen.
+          Wahlbereich Act ist ebenfalls für das Anwendungsbeispiel relevant.
+        `
+      },
+      {
+        pageNumber: 7,
+        text: `
+          Modulbeschreibung
+          Modulname
+          Computer Vision
+          Modul Nr.
+          20-00-0157
+          6 CP
+          Kurse des Moduls
+          20-00-0157-iv Computer Vision
+        `
+      }
+    ]);
+
+    expect(entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          module_number: "20-00-0155",
+          module_title: "Bildverarbeitung für Ingenieure - Grundlagen der bildgestützten Mess- und Automatisierungstechnik",
+          class_path: ["Wahlpflichtbereich Sense"]
+        }),
+        expect.objectContaining({
+          module_number: "20-00-0157",
+          class_path: ["Wahlpflichtbereich Sense"]
+        })
+      ])
+    );
+  });
+
+  it("keeps Computer Science specialisations as parents of wrapped elective headings", () => {
+    const entries = parseModuleHandbookPages([
+      {
+        pageNumber: 175,
+        text: `
+          Modulhandbuch
+          M. Sc. Computer Science
+          Vertiefung Distributed Computing
+          Wahlbereich Computer Networks and
+          Distributed Systems
+        `
+      },
+      {
+        pageNumber: 176,
+        text: `
+          Modulbeschreibung
+          Modulname
+          Sichere Mobile Netze
+          Modul Nr.
+          20-00-0342
+          6 CP
+          Kurse des Moduls
+          20-00-0342-iv Sichere Mobile Netze
+        `
+      },
+      {
+        pageNumber: 311,
+        text: `
+          Modulhandbuch
+          M. Sc. Computer Science
+          Vertiefung Visual Computing
+          Wahlbereich Integrated Methods of Graphics
+          and Vision
+        `
+      },
+      {
+        pageNumber: 312,
+        text: `
+          Modulbeschreibung
+          Modulname
+          Visual Inference
+          Modul Nr.
+          20-00-1038
+          6 CP
+          Kurse des Moduls
+          20-00-1038-iv Visual Inference
+        `
+      }
+    ]);
+
+    expect(entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          module_number: "20-00-0342",
+          class_path: ["Vertiefung Distributed Computing", "Wahlbereich Computer Networks and Distributed Systems"]
+        }),
+        expect.objectContaining({
+          module_number: "20-00-1038",
+          class_path: ["Vertiefung Visual Computing", "Wahlbereich Integrated Methods of Graphics and Vision"]
+        })
+      ])
+    );
+  });
+
+  it("parses module and course numbers with alphanumeric department segments", () => {
+    const entries = parseModuleHandbookPages([
+      {
+        pageNumber: 12,
+        text: `
+          Modulbeschreibung
+          Modulname
+          Adaptive Systeme
+          Modul Nr.
+          18 - AD - 2090
+          6 CP
+          Kurse des Moduls
+          18 - AD - 2090 - vl Adaptive Systeme
+        `
+      }
+    ]);
+
+    expect(entries).toEqual([
+      expect.objectContaining({
+        module_number: "18-ad-2090",
+        course_number: "18-ad-2090-vl",
+        module_title: "Adaptive Systeme"
+      })
+    ]);
+  });
 });

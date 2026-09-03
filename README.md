@@ -107,7 +107,7 @@ npm run module-handbooks:once
 - `ALLOWED_HOSTS` default: `semesti.plani.dev` (local `npm run dev` only)
 - `CF_TUNNEL_TOKEN` default: empty
 - `AUTO_START_SCANNER_ON_EMPTY_DB` default: `false` (the scanner service handles empty catalogues)
-- `TUCAN_START_URL` default: current public FB20 catalogue entry URL
+- `TUCAN_START_URL` default: stable public TUCaN welcome page used to discover the current semester and FB20 catalogue
 - `TUCAN_RATE_LIMIT_MS` default: `750`
 - `SCAN_INTERVAL_HOURS` default: `24`
 - `MODULE_HANDBOOK_OVERVIEW_URL` default: FB20 study regulations and module handbook overview

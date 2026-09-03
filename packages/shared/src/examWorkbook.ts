@@ -25,7 +25,7 @@ export type ParsedExamImportRow = {
   parseError: string | null;
 };
 
-const courseNumberPattern = /\b\d{2}\s*-\s*\d{2}\s*-\s*\d{4}(?:\s*-\s*[A-Za-z]{1,8})?\b/g;
+const courseNumberPattern = /\b\d{2}\s*-\s*[A-Za-z0-9]{2}\s*-\s*\d{4}(?:\s*-\s*[A-Za-z0-9]{1,8})?\b/g;
 
 function padNumber(value: number): string {
   return String(value).padStart(2, "0");

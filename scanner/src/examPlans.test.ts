@@ -15,6 +15,10 @@ describe("exam plan semester discovery", () => {
       semester_key: "Wintersemester 2026/27",
       semester_index: 4053
     });
+    expect(parseExamPlanSemester("Wintersemester 2026/2027")).toEqual({
+      semester_key: "Wintersemester 2026/27",
+      semester_index: 4053
+    });
   });
 
   it("selects Sommersemester 2026 over Wintersemester 25/26 even when winter appears first", () => {

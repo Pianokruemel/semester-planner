@@ -84,13 +84,8 @@ function stripMarkdownLink(value: string): string {
 }
 
 function tokenizeRow(line: string): string[] {
-  const tabSplit = line
-    .split("\t")
-    .map((part) => part.trim())
-    .filter((part) => part.length > 0);
-
-  if (tabSplit.length >= 4) {
-    return tabSplit;
+  if (line.includes("\t")) {
+    return line.split("\t").map((part) => part.trim());
   }
 
   return line
@@ -130,13 +125,14 @@ function extractFields(row: TokenizedRow): { dateRaw: string; fromRaw: string; t
   const dateRaw = row.columns.slice(hasIndexColumn ? 1 : 0, fromIndex).join(" ").trim();
   const fromRaw = row.columns[fromIndex] ?? "";
   const toRaw = row.columns[toIndex] ?? "";
+  const roomIndex = toIndex + 1;
   const roomRaw = row.columns[toIndex + 1] ?? "";
 
   if (!dateRaw) {
     throw new Error(`Ungültige Zeile ${row.lineNumber}: Datum fehlt.`);
   }
 
-  if (!roomRaw) {
+  if (roomIndex >= row.columns.length) {
     throw new Error(`Ungültige Zeile ${row.lineNumber}: Raum fehlt.`);
   }
 

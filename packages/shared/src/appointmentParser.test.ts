@@ -39,6 +39,18 @@ describe("appointment parser", () => {
     ]);
   });
 
+  it("preserves an explicitly empty room column instead of shifting the instructor", () => {
+    expect(parseAppointments("1\tDi, 13. Okt. 2026\t13:30\t15:10\t\tDr. Ada Lovelace")).toEqual([
+      {
+        date: "2026-10-13",
+        time_from: "13:30",
+        time_to: "15:10",
+        room: "",
+        type: "Vorlesung"
+      }
+    ]);
+  });
+
   it("summarizes parsed appointments", () => {
     expect(summarizeAppointments("1\tMo, 27. Apr. 2026\t08:55\t10:35\tS311/08\tAda")).toEqual({
       count: 1,

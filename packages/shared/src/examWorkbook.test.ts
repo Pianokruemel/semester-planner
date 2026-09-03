@@ -29,4 +29,12 @@ describe("exam workbook parsing", () => {
       )
     ).toEqual(["03-01-2003-VL", "03-01-4019", "03-01-2011-VL"]);
   });
+
+  it("extracts course numbers with alphanumeric department segments", () => {
+    expect(extractCourseNumbers("Robotik (18-ad-2090-vl), Sicherheit 18-su-2010 und Mathematik 20-am-4000-P1")).toEqual([
+      "18-AD-2090-VL",
+      "18-SU-2010",
+      "20-AM-4000-P1"
+    ]);
+  });
 });

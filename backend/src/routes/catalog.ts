@@ -83,21 +83,26 @@ const moduleHandbookCourseSchema = z.object({
   page_number: z.number().int().positive().nullable().optional()
 });
 
-const moduleHandbookDocumentSchema = z.object({
-  program_key: z.string().trim().min(1),
-  po_label: z.string().trim().min(1),
-  pdf_url: z.string().url(),
-  pdf_label: z.string().trim().min(1),
-  content_hash: z.string().regex(/^[a-f0-9]{64}$/i),
-  etag: z.string().nullable().optional(),
-  last_modified: z.string().nullable().optional(),
-  fetch_status: z.string().trim().min(1).default("fetched"),
-  parse_status: z.string().trim().min(1).default("parsed"),
-  error_text: z.string().nullable().optional(),
-  courses: z.array(moduleHandbookCourseSchema).default([])
-});
+const moduleHandbookDocumentSchema = z
+  .object({
+    program_key: z.string().trim().min(1),
+    po_label: z.string().trim().min(1),
+    pdf_url: z.string().url(),
+    pdf_label: z.string().trim().min(1),
+    content_hash: z.string().regex(/^[a-f0-9]{64}$/i),
+    etag: z.string().nullable().optional(),
+    last_modified: z.string().nullable().optional(),
+    fetch_status: z.string().trim().min(1).default("fetched"),
+    parse_status: z.string().trim().min(1).default("parsed"),
+    error_text: z.string().nullable().optional(),
+    courses: z.array(moduleHandbookCourseSchema).default([])
+  })
+  .refine((document) => document.parse_status !== "parsed" || document.courses.length > 0, {
+    message: "Parsed module handbook must contain at least one course.",
+    path: ["courses"]
+  });
 
-const moduleHandbookIngestSchema = z.object({
+export const moduleHandbookIngestSchema = z.object({
   programmes: z.array(studyProgramSchema).default([]),
   documents: z.array(moduleHandbookDocumentSchema).default([])
 });
@@ -473,6 +478,29 @@ async function backfillItSecurityPlanCategories(documents: z.infer<typeof module
   });
 }
 
+type FindCatalogScan = (args: {
+  where?: { status: "completed"; coursesSeen: { gt: 0 } };
+  orderBy: { startedAt: "desc" };
+  select: { semesterKey: true };
+}) => PromiseLike<{ semesterKey: string } | null>;
+
+export async function findDefaultCatalogSemester(findFirst: FindCatalogScan): Promise<string> {
+  const latestCompletedScan = await findFirst({
+    where: { status: "completed", coursesSeen: { gt: 0 } },
+    orderBy: { startedAt: "desc" },
+    select: { semesterKey: true }
+  });
+  if (latestCompletedScan) {
+    return latestCompletedScan.semesterKey;
+  }
+
+  const latestScan = await findFirst({
+    orderBy: { startedAt: "desc" },
+    select: { semesterKey: true }
+  });
+  return latestScan?.semesterKey ?? "";
+}
+
 export const catalogRouter = Router();
 
 catalogRouter.get("/health", async (_req, res) => {
@@ -584,8 +612,9 @@ catalogRouter.get("/courses", async (req, res) => {
   const faculty = typeof req.query.faculty === "string" ? req.query.faculty.trim() : "";
   const limit = Math.min(Math.max(Number(req.query.limit ?? 25) || 25, 1), 100);
   const page = Math.max(Number(req.query.page ?? 1) || 1, 1);
-  const latestScan = requestedSemester ? null : await prisma.catalogScanRun.findFirst({ orderBy: { startedAt: "desc" } });
-  const semester = requestedSemester || latestScan?.semesterKey || "";
+  const semester = requestedSemester
+    ? requestedSemester
+    : await findDefaultCatalogSemester((args) => prisma.catalogScanRun.findFirst(args));
   const instructorMatchIds = await findInstructorMatchIds(q, semester, faculty);
   const where: Prisma.CatalogCourseWhereInput = {
     ...(semester ? { semesterKey: semester } : {}),

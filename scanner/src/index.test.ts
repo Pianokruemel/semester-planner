@@ -3,6 +3,7 @@ import type { ScannerConfig } from "./config.js";
 import {
   assertAllowedScrapeUrl,
   BlockedUrlError,
+  defaultStartUrl,
   enrichModuleHandbooks,
   guardedFetch,
   readBodyCapped,
@@ -47,6 +48,16 @@ function jsonResponse(body: unknown, init: ResponseInit = {}) {
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+describe("scanner defaults", () => {
+  it("starts from the stable public welcome page", () => {
+    const url = new URL(defaultStartUrl({ ...baseConfig, startUrl: null }));
+
+    expect(url.origin).toBe("https://tucan.test");
+    expect(url.searchParams.get("PRGNAME")).toBe("EXTERNALPAGES");
+    expect(url.searchParams.get("ARGUMENTS")).toBe("-N000000000000001,-N000344,-Awelcome");
+  });
 });
 
 describe("scanner orchestration", () => {
@@ -243,6 +254,81 @@ describe("scanner orchestration", () => {
       scan_run_id: "scan-run-1",
       status: "completed",
       courses_failed: 0
+    });
+  });
+
+  it("deduplicates regenerated navigation URLs by breadcrumb and uses that path for courses", async () => {
+    const ingests: Array<Record<string, unknown>> = [];
+    const navigationFetches: string[] = [];
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        if (url === `${baseConfig.backendApiUrl}/catalog/internal/ingest` && init?.method === "POST") {
+          ingests.push(JSON.parse(String(init.body)));
+          return jsonResponse({ scan_run_id: "scan-run-1" });
+        }
+
+        if (url === "https://tucan.test/scripts/mgrqispi.dll?PRGNAME=ACTION&ARGUMENTS=-A1") {
+          navigationFetches.push(url);
+          return textResponse(`
+            <div id="pageContent">
+              <h2>Übersicht &gt; FB20 - Informatik &gt; Canonical Area</h2>
+              <a href="/scripts/mgrqispi.dll?PRGNAME=COURSEDETAILS&ARGUMENTS=-C1">Course One</a>
+              <a href="/scripts/mgrqispi.dll?PRGNAME=ACTION&ARGUMENTS=-A2">Regenerated Area</a>
+            </div>
+          `);
+        }
+
+        if (url === "https://tucan.test/scripts/mgrqispi.dll?PRGNAME=ACTION&ARGUMENTS=-A2") {
+          navigationFetches.push(url);
+          return textResponse(`
+            <div id="pageContent">
+              <h2> Übersicht &gt;  FB20 - Informatik  &gt; Canonical Area </h2>
+              <a href="/scripts/mgrqispi.dll?PRGNAME=ACTION&ARGUMENTS=-A3">Another regenerated URL</a>
+            </div>
+          `);
+        }
+
+        if (url === "https://tucan.test/scripts/mgrqispi.dll?PRGNAME=COURSEDETAILS&ARGUMENTS=-C1") {
+          return textResponse(`<div id="pageContent"><h1>20-00-0001-vl\nCourse One</h1></div>`);
+        }
+
+        throw new Error(`Unexpected fetch: ${url}`);
+      })
+    );
+
+    await scanOnce(baseConfig, {
+      enrichModuleHandbooks: async () => undefined,
+      resolveScanStart: async () => ({
+        url: "https://tucan.test/fb20",
+        html: `
+          <div id="pageContent">
+            <h2>Übersicht &gt; FB20 - Informatik</h2>
+            <a href="/scripts/mgrqispi.dll?PRGNAME=ACTION&ARGUMENTS=-A1">Queued label differs</a>
+          </div>
+        `,
+        semesterKey: "Sommersemester 2026",
+        path: ["FB20 - Informatik"]
+      }),
+      enrichExamPlans: async () => undefined
+    });
+
+    expect(navigationFetches).toEqual([
+      "https://tucan.test/scripts/mgrqispi.dll?PRGNAME=ACTION&ARGUMENTS=-A1",
+      "https://tucan.test/scripts/mgrqispi.dll?PRGNAME=ACTION&ARGUMENTS=-A2"
+    ]);
+    expect(ingests.at(-1)).toMatchObject({
+      status: "completed",
+      courses: [
+        expect.objectContaining({
+          title: "Course One",
+          path: ["FB20 - Informatik", "Canonical Area"]
+        })
+      ]
     });
   });
 });

@@ -287,8 +287,8 @@ function extractTitleAndNumber($: cheerio.CheerioAPI, details: Record<string, st
   const heading = $("#pageContent h1").first();
   const headingLines = heading.length ? multilineText($, heading as unknown as cheerio.Cheerio<Element>).split("\n").filter(Boolean) : [];
 
-  const courseNumberLinePattern = /^[A-Za-z0-9]+-\d{2}-\d{4}(?:-[A-Za-z0-9]+)?$|^\d{2}-\d{2}-\d{4}(?:-[A-Za-z0-9]+)?$/;
-  const inlineCourseNumberPattern = /^(\d{2}-\d{2}-\d{4}(?:-[A-Za-z0-9]+)?)\s+(.+)$/;
+  const courseNumberLinePattern = /^[A-Za-z0-9]+-\d{2}-\d{4}(?:-[A-Za-z0-9]+)?$|^\d{2}-[A-Za-z0-9]{2}-\d{4}(?:-[A-Za-z0-9]+)?$/;
+  const inlineCourseNumberPattern = /^(\d{2}-[A-Za-z0-9]{2}-\d{4}(?:-[A-Za-z0-9]+)?)\s+(.+)$/;
   let courseNumber: string | null = null;
   let title = "";
 
@@ -315,7 +315,7 @@ function extractTitleAndNumber($: cheerio.CheerioAPI, details: Record<string, st
 
   if (!courseNumber) {
     const fromDetails = findDetail(details, ["veranstaltungsnummer", "course number", "nummer"]);
-    courseNumber = fromDetails?.match(/\b\d{2}-\d{2}-\d{4}(?:-[A-Za-z0-9]+)?\b/)?.[0] ?? null;
+    courseNumber = fromDetails?.match(/\b\d{2}-[A-Za-z0-9]{2}-\d{4}(?:-[A-Za-z0-9]+)?\b/)?.[0] ?? null;
   }
 
   const titlePrefixMatch = title.match(inlineCourseNumberPattern);
@@ -330,20 +330,28 @@ function extractTitleAndNumber($: cheerio.CheerioAPI, details: Record<string, st
 }
 
 function baseCourseNumber(courseNumber: string | null): string | null {
-  return courseNumber?.match(/\b\d{2}-\d{2}-\d{4}\b/)?.[0] ?? null;
+  return courseNumber?.match(/\b\d{2}-[A-Za-z0-9]{2}-\d{4}\b/)?.[0]?.toLowerCase() ?? null;
 }
 
 function extractCp($: cheerio.CheerioAPI, details: Record<string, string>): number {
   const visibleRaw = findDetail(details, ["credit", "leistungspunkte", "cp"]);
   const visibleMatch = visibleRaw?.match(/(\d+(?:[,.]\d+)?)/);
-  if (visibleMatch) {
-    return Math.round(Number(visibleMatch[1]?.replace(",", ".")) || 0);
+  const visibleCp = visibleMatch ? Number(visibleMatch[1]?.replace(",", ".")) : 0;
+  if (visibleCp > 0) {
+    return Math.round(visibleCp);
   }
 
   const hiddenRaw = $("input[name='credits']").first().attr("value") ?? "";
   const hiddenMatch = hiddenRaw.trim().match(/(\d+(?:[,.]\d+)?)/);
-  if (hiddenMatch) {
-    return Math.round(Number(hiddenMatch[1]?.replace(",", ".")) || 0);
+  const hiddenCp = hiddenMatch ? Number(hiddenMatch[1]?.replace(",", ".")) : 0;
+  if (hiddenCp > 0) {
+    return Math.round(hiddenCp);
+  }
+
+  const additionalInfo = findDetail(details, ["weitere informationen", "additional information"]);
+  const additionalMatch = additionalInfo?.match(/\b(\d+(?:[,.]\d+)?)\s*(?:CP|ECTS)\b/i);
+  if (additionalMatch) {
+    return Math.round(Number(additionalMatch[1]?.replace(",", ".")) || 0);
   }
 
   return 0;
@@ -507,7 +515,7 @@ function extractAppointmentRowsAndDetails($: cheerio.CheerioAPI): {
     const dateCell = $row.find("[name='appointmentDate']").first();
     const fromCell = $row.find("[name='appointmentTimeFrom']").first();
     const toCell = $row.find("[name='appointmentDateTo']").first();
-    const roomCell = $row.find("[name='appointmentRooms']").first();
+    const roomCell = $row.find("[name='appointmentRooms'], .rw-course-room").first();
     const instructorsCell = $row.find("[name='appointmentInstructors']").first();
 
     if (!dateCell.length || !fromCell.length || !toCell.length) {
