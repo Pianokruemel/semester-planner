@@ -54,19 +54,19 @@ try {
     const label = `${method} ${path} (${proto || 'local HTTP'})`
     assert.equal(response.status, status, label)
     assert.equal(response.headers.location ?? null, location, `${label}: redirect`)
-    assert.equal(response.headers['strict-transport-security'] ?? null,
-      proto === 'https' ? 'max-age=31536000' : null, `${label}: HSTS`)
+    assert.equal(response.headers['strict-transport-security'], undefined,
+      `${label}: HSTS is managed by Cloudflare`)
     console.log(`PASS ${label}`)
     return response.body
   }
 
   await check('/', null, 200)
   await check('/stundenplan', null, 200)
-  await check('/share/example?next=%2F', 'http', 308,
-    'https://semesti.plani.dev/share/example?next=%2F')
-  await check('/api/plans', 'http', 308, 'https://semesti.plani.dev/api/plans', 'POST')
+  await check('/share/example?next=%2F', 'http', 200)
+  assert.equal(await check('/api/plans', 'http', 200, null, 'POST'), 'http')
   await check('/', 'https', 200)
   await check('/api?query=one', 'https', 308, '/api/?query=one')
+  await check('/api?query=one', 'http', 308, '/api/?query=one')
   await check('/api', null, 308, '/api/')
   assert.equal(await check('/api/echo', 'https', 200), 'https')
   assert.equal(await check('/api/echo', null, 200), 'http')

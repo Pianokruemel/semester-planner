@@ -52,10 +52,11 @@ docker compose up -d --build
 Public traffic reaches the stack through the `cloudflared` tunnel, which forwards to the
 frontend (port 3000); TLS is terminated by Cloudflare.
 
-Keep the production frontend port private to the tunnel. nginx trusts Cloudflare's
-`X-Forwarded-Proto` header to redirect public HTTP requests to HTTPS and sends a one-year
-HSTS policy on HTTPS responses, without extending that policy to other subdomains.
-Direct local HTTP requests remain available for development and container healthchecks.
+Enable **Always Use HTTPS** and **HSTS** in Cloudflare under **SSL/TLS → Edge Certificates**.
+Cloudflare owns these policies; nginx does not redirect to HTTPS or add an HSTS header.
+Keep the production frontend port private to the tunnel. nginx preserves Cloudflare's
+`X-Forwarded-Proto` header when proxying the API. Direct local HTTP requests remain
+available for development and container healthchecks.
 After deploying frontend changes, verify that `curl -I http://semesti.plani.dev/` returns
 an HTTPS redirect and `curl -I https://semesti.plani.dev/` includes `Strict-Transport-Security`.
 The nginx routing and headers can also be checked locally with
