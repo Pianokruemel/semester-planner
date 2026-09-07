@@ -1,11 +1,13 @@
 import { Fragment } from "react";
 import { useNavigate } from "react-router-dom";
 import { AppleCard } from "../components/AppleCard";
+import { AppleBtn } from "../components/AppleBtn";
 import { EventChip } from "../components/EventChip";
 import { PageHeader } from "../components/PageHeader";
 import { SegmentedControl } from "../components/SegmentedControl";
 import { usePlan } from "../app/PlanProvider";
 import { TYPE_SHORT } from "../lib/conflicts";
+import { downloadCalendar } from "../lib/calendarExport";
 import type { UICourse } from "../app/adapter";
 
 const SEGMENTS = ["Übersicht", "Stundenplan", "Konflikte"];
@@ -66,8 +68,14 @@ export function TimetableView() {
   return (
     <div>
       <PageHeader title="Stundenplan" sub="Typische Woche">
+        <AppleBtn icon="export2" disabled={!picked.some((c) => c.appointments.length > 0)} onClick={() => downloadCalendar(picked)}>
+          ICS exportieren
+        </AppleBtn>
         <SegmentedControl options={SEGMENTS} active={1} onChange={(i) => navigate(SEGMENT_PATHS[i])} />
       </PageHeader>
+      <p style={{ fontSize: 13, color: "var(--label-secondary)", marginBottom: 16 }}>
+        Der ICS-Export enthält alle Termine und Klausuren der aktiven Kurse, auch Einzeltermine außerhalb der typischen Woche.
+      </p>
       <AppleCard noPad style={{ overflow: "auto" }}>
         <div style={{ display: "grid", gridTemplateColumns: "48px repeat(5, 1fr)", minWidth: 650 }}>
           <div style={{ borderBottom: "0.5px solid var(--separator)" }} />

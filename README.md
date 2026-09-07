@@ -52,6 +52,15 @@ docker compose up -d --build
 Public traffic reaches the stack through the `cloudflared` tunnel, which forwards to the
 frontend (port 3000); TLS is terminated by Cloudflare.
 
+Keep the production frontend port private to the tunnel. nginx trusts Cloudflare's
+`X-Forwarded-Proto` header to redirect public HTTP requests to HTTPS and sends a one-year
+HSTS policy on HTTPS responses, without extending that policy to other subdomains.
+Direct local HTTP requests remain available for development and container healthchecks.
+After deploying frontend changes, verify that `curl -I http://semesti.plani.dev/` returns
+an HTTPS redirect and `curl -I https://semesti.plani.dev/` includes `Strict-Transport-Security`.
+The nginx routing and headers can also be checked locally with
+`node frontend/scripts/verify-nginx.mjs` (requires Docker and the `nginx:alpine` image).
+
 Database schema is managed by Prisma migrations (`backend/prisma/migrations`). A fresh database
 is created automatically by `prisma migrate deploy` on first backend boot. If you are upgrading a
 database that was previously created with `prisma db push` (no migration history), baseline it
@@ -158,7 +167,7 @@ Rules:
 5. Run the scanner and confirm `/api/catalog/health` reports catalogue counts.
 6. Search the catalogue in the frontend and import a course.
 7. Confirm imported catalogue appointments are copied into `planned_appointments`.
-8. Export ICS and confirm the file reflects the current visible planner state.
+8. In **Stundenplan**, use **ICS exportieren** and confirm the file contains every dated appointment and exam from active courses, including single dates absent from the typical-week grid. Check that imported times use Europe/Berlin across the daylight-saving change; inactive courses must be excluded.
 
 ## Transparency Notice
 

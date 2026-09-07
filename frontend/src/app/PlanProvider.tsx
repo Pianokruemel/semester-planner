@@ -99,6 +99,14 @@ function clearObsoleteKeys() {
   }
 }
 
+function planErrorMessage(error: unknown, fallback: string): string {
+  if (axios.isAxiosError(error)) {
+    const message: unknown = error.response?.data?.message;
+    return typeof message === "string" && message.trim() ? message : fallback;
+  }
+  return error instanceof Error ? error.message : fallback;
+}
+
 export function PlanProvider({ children }: { children: ReactNode }) {
   const [planId, setPlanId] = useState<string | null>(() => readStoredPlanId());
   const [plan, setPlan] = useState<BackendPlan | null>(null);
@@ -153,7 +161,7 @@ export function PlanProvider({ children }: { children: ReactNode }) {
   }, [loadPlan]);
 
   const startNewPlan = useCallback(async (preferredStudyProgramKey: string) => {
-    setIsLoading(true);
+    // Onboarding owns its pending state so request failures preserve the current step.
     setError(null);
     try {
       const created = await createPlan(preferredStudyProgramKey);
@@ -161,16 +169,13 @@ export function PlanProvider({ children }: { children: ReactNode }) {
       setPlanId(created.id);
       writeStoredPlanId(created.id);
     } catch (e) {
-      const message = e instanceof Error ? e.message : "Plan konnte nicht erstellt werden.";
+      const message = planErrorMessage(e, "Plan konnte nicht erstellt werden. Bitte erneut versuchen.");
       setError(message);
-      throw e;
-    } finally {
-      setIsLoading(false);
+      throw new Error(message, { cause: e });
     }
   }, []);
 
   const loadPlanByToken = useCallback(async (token: string) => {
-    setIsLoading(true);
     setError(null);
     try {
       const loaded = await fetchPlanByToken(token);
@@ -178,11 +183,11 @@ export function PlanProvider({ children }: { children: ReactNode }) {
       setPlanId(loaded.id);
       writeStoredPlanId(loaded.id);
     } catch (e) {
-      const message = e instanceof Error ? e.message : "Plan nicht gefunden.";
+      const message = axios.isAxiosError(e) && e.response?.status === 400
+        ? "Ungültiger Token. Bitte überprüfe deine Eingabe."
+        : planErrorMessage(e, "Plan konnte nicht geladen werden. Bitte erneut versuchen.");
       setError(message);
-      throw e;
-    } finally {
-      setIsLoading(false);
+      throw new Error(message, { cause: e });
     }
   }, []);
 

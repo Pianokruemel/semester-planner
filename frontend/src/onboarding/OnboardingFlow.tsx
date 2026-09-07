@@ -145,6 +145,7 @@ export function OnboardingFlow() {
               </div>
               <input
                 type="text"
+                aria-label="Studiengang suchen"
                 placeholder="Studiengang suchen…"
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
@@ -307,7 +308,7 @@ export function OnboardingFlow() {
                 </button>
               </div>
               {createError && (
-                <div style={{ fontSize: 13, color: "var(--tint-red)" }}>{createError}</div>
+                <div role="alert" style={{ fontSize: 13, color: "var(--tint-red)" }}>{createError}</div>
               )}
               <button
                 onClick={() => setStep("studiengang")}
@@ -340,9 +341,12 @@ export function OnboardingFlow() {
                 </div>
               </div>
               <div style={{ display: "grid", gap: 5 }}>
-                <label style={{ fontSize: 13, fontWeight: 500, color: "var(--label-secondary)" }}>Token</label>
+                <label htmlFor="plan-token" style={{ fontSize: 13, fontWeight: 500, color: "var(--label-secondary)" }}>Token</label>
                 <input
+                  id="plan-token"
                   type="text"
+                  aria-invalid={!!tokenError}
+                  aria-describedby={tokenError ? "plan-token-error" : undefined}
                   placeholder="z.B. a3f8-k29x-m4pq"
                   value={token}
                   onChange={(e) => setToken(e.target.value)}
@@ -360,7 +364,7 @@ export function OnboardingFlow() {
                   }}
                 />
                 {tokenError && (
-                  <div style={{ fontSize: 13, color: "var(--tint-red)", marginTop: 4 }}>{tokenError}</div>
+                  <div id="plan-token-error" role="alert" style={{ fontSize: 13, color: "var(--tint-red)", marginTop: 4 }}>{tokenError}</div>
                 )}
               </div>
               <AppleBtn

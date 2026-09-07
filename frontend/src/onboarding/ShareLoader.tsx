@@ -37,6 +37,7 @@ export function ShareLoader() {
 
   return (
     <div
+      role={status === "error" ? "alert" : "status"}
       style={{
         minHeight: "100vh",
         display: "grid",
