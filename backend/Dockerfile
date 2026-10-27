@@ -1,13 +1,15 @@
-FROM node:20-alpine
+FROM node:24-alpine
 
 ENV NODE_ENV=production
 
 WORKDIR /app
 
-COPY packages/shared/package*.json packages/shared/
-COPY backend/package*.json backend/
-RUN cd packages/shared && npm install --include=dev
-RUN cd backend && npm install --include=dev
+COPY package.json package-lock.json ./
+COPY packages/shared/package.json packages/shared/
+COPY backend/package.json backend/
+COPY frontend/package.json frontend/
+COPY scanner/package.json scanner/
+RUN npm ci --workspace=packages/shared --workspace=backend --include=dev
 
 COPY packages/shared packages/shared
 COPY backend backend

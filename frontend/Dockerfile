@@ -1,11 +1,13 @@
-FROM node:20-alpine AS build
+FROM node:24-alpine AS build
 
 WORKDIR /app
 
-COPY packages/shared/package*.json packages/shared/
-COPY frontend/package*.json frontend/
-RUN cd packages/shared && npm install
-RUN cd frontend && npm install
+COPY package.json package-lock.json ./
+COPY packages/shared/package.json packages/shared/
+COPY backend/package.json backend/
+COPY frontend/package.json frontend/
+COPY scanner/package.json scanner/
+RUN npm ci --workspace=packages/shared --workspace=frontend --include=dev
 
 COPY packages/shared packages/shared
 COPY frontend frontend

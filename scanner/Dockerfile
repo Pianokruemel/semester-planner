@@ -1,11 +1,13 @@
-FROM node:20-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 
-COPY packages/shared/package*.json packages/shared/
-COPY scanner/package*.json scanner/
-RUN cd packages/shared && npm install
-RUN cd scanner && npm install
+COPY package.json package-lock.json ./
+COPY packages/shared/package.json packages/shared/
+COPY backend/package.json backend/
+COPY frontend/package.json frontend/
+COPY scanner/package.json scanner/
+RUN npm ci --workspace=packages/shared --workspace=scanner --include=dev
 
 COPY packages/shared packages/shared
 COPY scanner scanner

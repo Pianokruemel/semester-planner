@@ -42,6 +42,10 @@ The frontend image builds the app to static assets and serves them with nginx, w
 proxies `/api` to the backend. The backend runs `prisma migrate deploy` on boot and then the
 compiled server. The scanner service fills an empty catalogue on its own startup.
 
+Application images use Node.js 24 and install dependencies from the root workspace
+`package-lock.json` with `npm ci`. The scanner's PDF parser requires Node.js 22.13 or newer;
+Node.js 20 images are incompatible with it.
+
 ## Production Deployment
 
 ```bash
@@ -51,6 +55,20 @@ docker compose up -d --build
 
 Public traffic reaches the stack through the `cloudflared` tunnel, which forwards to the
 frontend (port 3000); TLS is terminated by Cloudflare.
+
+To update an existing deployment after pulling the latest source:
+
+```bash
+docker compose build --pull && \
+docker compose pull db cloudflared && \
+docker compose up -d --remove-orphans && \
+docker compose ps
+```
+
+Build first so a failed application build leaves the running services in place. `build --pull`
+refreshes application base images; `compose pull` only updates services that declare an image.
+These commands preserve the `pgdata` volume. Do not use `docker compose down -v` during updates,
+as it deletes the database volume.
 
 Enable **Always Use HTTPS** and **HSTS** in Cloudflare under **SSL/TLS → Edge Certificates**.
 Cloudflare owns these policies; nginx does not redirect to HTTPS or add an HSTS header.
@@ -72,6 +90,8 @@ docker compose run --rm backend npx prisma migrate resolve --applied 0_init
 ```
 
 ## Local Development
+
+Use Node.js 24, matching the application images and CI.
 
 ```bash
 npm install
