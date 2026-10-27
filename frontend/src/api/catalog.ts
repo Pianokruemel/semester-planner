@@ -54,6 +54,22 @@ export type CatalogCourseDetail = CatalogCourseCard & {
   language: string | null;
   details_json: unknown;
   raw_appointment_text: string | null;
+  exam_source: {
+    document_id: string;
+    semester_key: string;
+    file_url: string;
+    file_label: string;
+  } | null;
+  exam_candidates: Array<{
+    candidate_id: string;
+    date: string;
+    time_from: string;
+    time_to: string;
+    exam_title: string;
+    appointment_type: string | null;
+    lecturer: string | null;
+    match_reasons: string[];
+  }>;
   appointments: Array<{
     id: string;
     date: string;

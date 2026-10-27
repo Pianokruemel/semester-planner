@@ -162,6 +162,7 @@ export type PlanExamCandidateGroup = {
   course_name: string;
   course_number: string | null;
   has_existing_exam: boolean;
+  source: ExamCandidateSource;
   candidates: Array<{
     candidate_id: string;
     date: string;

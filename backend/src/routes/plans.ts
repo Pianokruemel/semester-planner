@@ -251,11 +251,12 @@ function selectedCatalogAppointmentData(
 async function autoLinkExamFromCatalog(
   courseId: string,
   catalogCourseId: string,
+  semesterKey: string,
   options: { overwrite: boolean }
 ): Promise<void> {
   const latestDocument = await prisma.catalogExamPlanDocument.findFirst({
-    where: { parseStatus: "parsed" },
-    orderBy: [{ semesterIndex: "desc" }, { fetchedAt: "desc" }],
+    where: { semesterKey, parseStatus: "parsed" },
+    orderBy: [{ fetchedAt: "desc" }, { id: "desc" }],
     select: { id: true }
   });
   if (!latestDocument) {
@@ -594,37 +595,50 @@ plansRouter.get("/:planId/exam-candidates", async (req, res) => {
       name: true,
       courseNumber: true,
       catalogCourseId: true,
+      catalogCourse: { select: { semesterKey: true } },
       exam: true
     },
     orderBy: [{ name: "asc" }]
   });
-  const catalogCourseIds = plannedCourses.flatMap((course) => (course.catalogCourseId ? [course.catalogCourseId] : []));
-  const latestDocument = await prisma.catalogExamPlanDocument.findFirst({
-    where: { parseStatus: "parsed" },
-    orderBy: [{ semesterIndex: "desc" }, { fetchedAt: "desc" }]
+  const semesterKeys = [...new Set(plannedCourses.flatMap((course) => (course.catalogCourse ? [course.catalogCourse.semesterKey] : [])))];
+  const documents = await prisma.catalogExamPlanDocument.findMany({
+    where: { semesterKey: { in: semesterKeys }, parseStatus: "parsed" },
+    orderBy: [{ fetchedAt: "desc" }, { id: "desc" }]
   });
-  const source = latestDocument
-    ? {
-        document_id: latestDocument.id,
-        semester_key: latestDocument.semesterKey,
-        semester_index: latestDocument.semesterIndex,
-        file_url: latestDocument.fileUrl,
-        file_label: latestDocument.fileLabel,
-        content_hash: latestDocument.contentHash,
-        fetched_at: latestDocument.fetchedAt.toISOString(),
-        parsed_at: latestDocument.parsedAt?.toISOString() ?? null
-      }
-    : null;
+  const latestBySemester = new Map<string, (typeof documents)[number]>();
+  for (const document of documents) {
+    if (!latestBySemester.has(document.semesterKey)) {
+      latestBySemester.set(document.semesterKey, document);
+    }
+  }
+  function documentSource(document: (typeof documents)[number]) {
+    return {
+      document_id: document.id,
+      semester_key: document.semesterKey,
+      semester_index: document.semesterIndex,
+      file_url: document.fileUrl,
+      file_label: document.fileLabel,
+      content_hash: document.contentHash,
+      fetched_at: document.fetchedAt.toISOString(),
+      parsed_at: document.parsedAt?.toISOString() ?? null
+    };
+  }
+  const selectedDocuments = [...latestBySemester.values()];
+  const source = selectedDocuments.length === 1 ? documentSource(selectedDocuments[0]!) : null;
 
-  if (!latestDocument || catalogCourseIds.length === 0) {
+  if (selectedDocuments.length === 0) {
     res.json({ source, items: [] });
     return;
   }
 
   const matches = await prisma.catalogExamCourseMatch.findMany({
     where: {
-      catalogCourseId: { in: catalogCourseIds },
-      candidate: { documentId: latestDocument.id }
+      OR: plannedCourses.flatMap((course) => {
+        const document = course.catalogCourse && latestBySemester.get(course.catalogCourse.semesterKey);
+        return document && course.catalogCourseId
+          ? [{ catalogCourseId: course.catalogCourseId, candidate: { documentId: document.id } }]
+          : [];
+      })
     },
     include: {
       candidate: true
@@ -657,6 +671,7 @@ plansRouter.get("/:planId/exam-candidates", async (req, res) => {
           course_name: course.name,
           course_number: course.courseNumber,
           has_existing_exam: Boolean(course.exam),
+          source: documentSource(latestBySemester.get(course.catalogCourse!.semesterKey)!),
           candidates: entries.map((entry) => ({
             candidate_id: entry.candidate.id,
             date: entry.candidate.date.toISOString().slice(0, 10),
@@ -780,7 +795,7 @@ plansRouter.post("/:planId/courses/import-catalog", async (req, res) => {
     }
   });
 
-  await autoLinkExamFromCatalog(plannedCourse.id, catalogCourse.id, { overwrite: true });
+  await autoLinkExamFromCatalog(plannedCourse.id, catalogCourse.id, catalogCourse.semesterKey, { overwrite: true });
 
   res.status(201).json({
     plan: serializePlan(await fetchPlan(planId)),
@@ -837,7 +852,7 @@ plansRouter.post("/:planId/courses/:courseId/refresh-catalog", async (req, res) 
     });
   });
 
-  await autoLinkExamFromCatalog(courseId, catalogCourse.id, { overwrite: false });
+  await autoLinkExamFromCatalog(courseId, catalogCourse.id, catalogCourse.semesterKey, { overwrite: false });
 
   res.json(serializePlan(await fetchPlan(planId)));
 });

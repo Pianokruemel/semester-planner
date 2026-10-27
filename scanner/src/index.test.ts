@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { examWorkbookHeaders } from "@semester-planner/shared/examWorkbook";
+import { utils, write } from "xlsx";
 import type { ScannerConfig } from "./config.js";
 import {
   assertAllowedScrapeUrl,
   BlockedUrlError,
   defaultStartUrl,
+  enrichExamPlans,
   enrichModuleHandbooks,
   guardedFetch,
   readBodyCapped,
@@ -61,6 +64,80 @@ describe("scanner defaults", () => {
 });
 
 describe("scanner orchestration", () => {
+  it("reingests the scanned semester's unchanged workbook even when a newer semester is published", async () => {
+    const workbook = utils.book_new();
+    utils.book_append_sheet(workbook, utils.aoa_to_sheet([
+      [...examWorkbookHeaders],
+      ["Di", "2027-03-09", "14:30", "17:00", "Examen", "Prof. Dr. Amir Moradi", "Physical Attacks and Countermeasures (20-00-1178)"]
+    ]), "Exams");
+    const bytes = write(workbook, { type: "buffer", bookType: "xlsx" });
+    const ingests: Array<Record<string, unknown>> = [];
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        if (url === baseConfig.examPlanOverviewUrl) {
+          return textResponse(`
+            <a href="/winter.xlsx">Wintersemester 2026/27</a>
+            <a href="/summer.xlsx">Sommersemester 2027</a>
+          `);
+        }
+        if (url.startsWith(`${baseConfig.backendApiUrl}/catalog/internal/exam-plans/status?`)) {
+          expect(new URL(url).searchParams.get("semester_key")).toBe("Wintersemester 2026/27");
+          return jsonResponse(ingests.length === 0 ? null : {
+            content_hash: ingests[0]!.content_hash,
+            parse_status: "parsed"
+          });
+        }
+        if (url === "https://exam.test/winter.xlsx") {
+          return new Response(bytes);
+        }
+        if (url === `${baseConfig.backendApiUrl}/catalog/internal/exam-plans` && init?.method === "POST") {
+          ingests.push(JSON.parse(String(init.body)));
+          return jsonResponse({ document_id: "exam-document" });
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+      })
+    );
+
+    await enrichExamPlans(baseConfig, "Wintersemester 2026/27");
+    await enrichExamPlans(baseConfig, "Wintersemester 2026/27");
+
+    expect(ingests).toHaveLength(2);
+    expect(ingests[1]).toEqual(ingests[0]);
+    expect(ingests[1]).toMatchObject({
+      semester_key: "Wintersemester 2026/27",
+      parse_status: "parsed",
+      rows: [{
+        date: "2027-03-09",
+        time_from: "14:30",
+        time_to: "17:00",
+        appointment_type: "Examen",
+        lecturer: "Prof. Dr. Amir Moradi",
+        course_name: "Physical Attacks and Countermeasures (20-00-1178)",
+        extracted_course_numbers: ["20-00-1178"]
+      }]
+    });
+  });
+
+  it("does not substitute another semester when the scanned semester has no workbook", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      if (String(input) === baseConfig.examPlanOverviewUrl) {
+        return textResponse(`<a href="/summer.xlsx">Sommersemester 2027</a>`);
+      }
+      throw new Error(`Unexpected fetch: ${String(input)}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await enrichExamPlans(baseConfig, "Wintersemester 2026/27");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("ingests discovered study programmes before fetching handbook PDFs", async () => {
     const ingests: unknown[] = [];
     const failedPdfError = vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -150,7 +227,9 @@ describe("scanner orchestration", () => {
           path: ["FB20 - Informatik"]
         };
       },
-      enrichExamPlans: async () => {
+      enrichExamPlans: async (config, semesterKey) => {
+        expect(config).toBe(baseConfig);
+        expect(semesterKey).toBe("Sommersemester 2026");
         calls.push("exam-plans");
       }
     });

@@ -664,7 +664,18 @@ catalogRouter.get("/courses/:id", async (req, res) => {
   }
 
   const programmes = (await findProgrammeMatchesForCourseNumber(course.courseNumber)).map(serializeProgrammeMatch);
-  res.json(serializeCatalogCourse({ ...course, programmes }));
+  const examSource = await prisma.catalogExamPlanDocument.findFirst({
+    where: { semesterKey: course.semesterKey, parseStatus: "parsed" },
+    orderBy: [{ fetchedAt: "desc" }, { id: "desc" }]
+  });
+  const examMatches = examSource
+    ? await prisma.catalogExamCourseMatch.findMany({
+        where: { catalogCourseId: course.id, candidate: { documentId: examSource.id } },
+        include: { candidate: true },
+        orderBy: [{ candidate: { date: "asc" } }, { candidate: { timeFrom: "asc" } }, { candidate: { rowNumber: "asc" } }]
+      })
+    : [];
+  res.json(serializeCatalogCourse({ ...course, programmes, examSource, examMatches }));
 });
 
 catalogRouter.get("/internal/module-handbooks/status", async (req, res) => {

@@ -1,4 +1,4 @@
-import { CatalogAppointment, CatalogCourse, PlanCategory, PlannedAppointment, PlannedCourse, PlannedExam, Prisma } from "@prisma/client";
+import { CatalogAppointment, CatalogCourse, CatalogExamCandidate, CatalogExamCourseMatch, CatalogExamPlanDocument, PlanCategory, PlannedAppointment, PlannedCourse, PlannedExam, Prisma } from "@prisma/client";
 import { appointmentFingerprint, appointmentTimePlaceKey, plannedAppointmentsFromCatalog } from "./catalogSync";
 import { requirementGroupsForProgram } from "./curriculum";
 import { dateFromYmd, ymdFromDate } from "./dates";
@@ -262,6 +262,8 @@ export function serializeCatalogCourse(
   course: CatalogCourse & {
     appointments?: CatalogAppointment[];
     programmes?: CatalogProgrammeMatch[];
+    examSource?: Pick<CatalogExamPlanDocument, "id" | "semesterKey" | "fileUrl" | "fileLabel"> | null;
+    examMatches?: Array<Pick<CatalogExamCourseMatch, "matchReasons"> & { candidate: CatalogExamCandidate }>;
   }
 ) {
   return {
@@ -286,6 +288,24 @@ export function serializeCatalogCourse(
     appointment_count: course.appointmentCount,
     programmes: course.programmes ?? [],
     last_scanned_at: course.lastScannedAt.toISOString(),
-    appointments: course.appointments?.map(serializeAppointment) ?? undefined
+    appointments: course.appointments?.map(serializeAppointment) ?? undefined,
+    exam_source: course.examSource
+      ? {
+          document_id: course.examSource.id,
+          semester_key: course.examSource.semesterKey,
+          file_url: course.examSource.fileUrl,
+          file_label: course.examSource.fileLabel
+        }
+      : null,
+    exam_candidates: (course.examMatches ?? []).map(({ candidate, matchReasons }) => ({
+      candidate_id: candidate.id,
+      date: ymdFromDate(candidate.date),
+      time_from: candidate.timeFrom,
+      time_to: candidate.timeTo,
+      exam_title: candidate.courseName,
+      appointment_type: candidate.appointmentType,
+      lecturer: candidate.lecturer,
+      match_reasons: matchReasons
+    }))
   };
 }

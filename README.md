@@ -163,6 +163,65 @@ Base URL for browser clients: `/api`
 - `GET /catalog/courses/:id`
 - `POST /catalog/internal/ingest` with `x-scanner-token`
 
+### Public catalog exam candidates
+
+`GET /api/catalog/courses/:id` preserves all existing course fields and ordinary
+`appointments`, and adds these separately stored exam fields:
+
+```json
+{
+  "exam_source": {
+    "document_id": "2d3500ef-5053-4716-b3ca-a5e4c6aa23a2",
+    "semester_key": "Wintersemester 2026/27",
+    "file_url": "https://example.test/winter-exams.xlsx",
+    "file_label": "Prüfungsplan Wintersemester 2026/27"
+  },
+  "exam_candidates": [
+    {
+      "candidate_id": "da6858fe-b74a-4e2e-a13a-ac5384cb3629",
+      "date": "2027-03-09",
+      "time_from": "14:30",
+      "time_to": "17:00",
+      "exam_title": "Physical Attacks and Countermeasures (20-00-1178)",
+      "appointment_type": "Examen",
+      "lecturer": "Prof. Dr. Amir Moradi",
+      "match_reasons": ["course-number-brackets", "course-title-exact"]
+    }
+  ]
+}
+```
+
+The UUIDs and source URL above are illustrative; the course and exam values match
+the winter workbook's row 335. The source is the most recently fetched document
+with `parse_status = parsed` **within the course's `semester_key`**, using document
+ID as a deterministic tie-breaker. A newer semester or failed parse cannot replace
+that source. If no parsed document exists, the response contains
+`"exam_source": null` and `"exam_candidates": []`. If the selected document has no
+match, its source metadata remains present and the candidates array is empty.
+
+Every matched candidate is returned, ordered by date, start time, and workbook row.
+`appointment_type` and `lecturer` may be null. Dates use `YYYY-MM-DD` and times use
+`HH:mm`, as written in the workbook. Candidates are never merged into ordinary
+appointments or reduced to an arbitrary single exam.
+
+`GET /api/plans/:planId/exam-candidates` applies the same semester selection per
+linked catalog course. Each returned course group includes `source` with that
+workbook's metadata. The existing top-level `source` is populated when exactly one
+document applies, and is null when none or multiple apply. Import and refresh only
+auto-link a sole candidate from the linked course's semester; refresh preserves an
+existing exam.
+
+After catalog scanning, exam enrichment selects a workbook for the scanned semester
+and reparses and reingests even an unchanged workbook hash. Matching therefore runs
+against the current catalog, including courses added after the previous ingest.
+This retains the existing candidate replacement behavior, so candidate IDs can
+change on reingest.
+
+Regression coverage lives in `backend/src/routes/catalog.exams.test.ts`,
+`backend/src/routes/plans.test.ts`, and `scanner/src/index.test.ts`. Run `npm test`
+and `npm run build` from the repository root; these checks use test fixtures and
+stubbed persistence, without accessing production data.
+
 ## TUCaN Import Format
 
 ```text

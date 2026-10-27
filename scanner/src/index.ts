@@ -566,11 +566,13 @@ export async function enrichModuleHandbooks(config: ScannerConfig) {
   await ingestModuleHandbooks(config, [], documents);
 }
 
-export async function enrichExamPlans(config: ScannerConfig) {
+export async function enrichExamPlans(config: ScannerConfig, semesterKey?: string) {
   console.log(`exam_plan_overview url=${config.examPlanOverviewUrl}`);
   const overviewHtml = await fetchText(config.examPlanOverviewUrl, config);
   const links = discoverExamPlanLinks(overviewHtml, config.examPlanOverviewUrl);
-  const newest = selectNewestExamPlanLink(links);
+  const newest = selectNewestExamPlanLink(
+    semesterKey ? links.filter((link) => link.semester_key === semesterKey) : links
+  );
 
   if (!newest) {
     console.warn("exam_plan_missing reason=no_xlsx_semester_link");
@@ -586,8 +588,8 @@ export async function enrichExamPlans(config: ScannerConfig) {
   const contentHash = sha256Hex(fetched.bytes);
 
   if (previous?.content_hash === contentHash && previous.parse_status === "parsed") {
-    console.log(`exam_plan_unchanged semester="${newest.semester_key}" reason=same_hash`);
-    return;
+    // Catalog courses may have been added since the previous workbook ingest.
+    console.log(`exam_plan_unchanged semester="${newest.semester_key}" reason=same_hash action=rematch`);
   }
 
   try {
@@ -787,7 +789,7 @@ export async function scanOnce(config: ScannerConfig, deps: ScanOnceDeps = {}) {
   }
 
   try {
-    await runExamPlans(config);
+    await runExamPlans(config, semesterKey);
   } catch (error) {
     console.error("exam_plans_failed", error);
   }
